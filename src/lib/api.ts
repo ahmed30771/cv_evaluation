@@ -1,5 +1,5 @@
-// Empty = same origin (Vercel single project). Local: set NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+// Same-origin Next.js API routes (works on Vercel + local `npm run dev`)
+const API_BASE = "";
 
 export type EvaluationStatus = {
   id: string;
