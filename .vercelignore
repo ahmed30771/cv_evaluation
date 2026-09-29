@@ -1,15 +1,36 @@
-backend/.venv
-backend/venv
-backend/uploads
-frontend/node_modules
-frontend/.next
-frontend/src
-frontend/.env.local
-**/__pycache__
-*.pyc
-.node_modules
+# Dependencies / build (Vercel installs fresh)
 node_modules
 .next
 .vercel
+.turbo
+
+# Secrets (never deploy)
 .env
-.env.local
+.env.*
+!.env.example
+
+# Docs & product notes — not needed to run the app
+docs
+README.md
+
+# Optional Python FastAPI experiment — not used on Vercel
+backend
+requirements.txt
+
+# Local / leftover
+frontend
+uploads
+**/__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+*.log
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+
+# TypeScript build cache
+tsconfig.tsbuildinfo
+*.tsbuildinfo
