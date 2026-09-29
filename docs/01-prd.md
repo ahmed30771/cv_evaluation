@@ -3,7 +3,7 @@
 **Product:** CV Evaluation Platform  
 **Version:** 1.0 (MVP)  
 **Status:** Approved for documentation  
-**Stack context:** Next.js · FastAPI · Neon PostgreSQL · OpenRouter
+**Stack context:** Next.js (UI + API) · Neon PostgreSQL · OpenRouter
 
 ---
 
@@ -115,11 +115,15 @@ Report must include labeled groups:
 
 | Type | Intent |
 |------|--------|
+| Executive summary | Overall assessment of CV quality and fit |
+| Section analysis | Per-section verdicts (summary, skills, experience, etc.) |
 | Strengths | What is working well |
 | Issues | Concrete problems (e.g. bullets lack measurable results) |
 | Missing information | Gaps vs a complete professional CV |
 | Recommendations | What to change and why |
 | Suggested improvements | Example rewrites / better bullets |
+
+Also show overall + category scores with qualitative bands (e.g. Excellent / Good / Fair / Needs work) and detected CV sections where available.
 
 ### FR-7 Processing feedback
 

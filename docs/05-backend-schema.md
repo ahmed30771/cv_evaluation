@@ -175,10 +175,16 @@ Many findings per evaluation (1:N).
 
 **Type values:**
 
-`strength` | `issue` | `missing` | `recommendation` | `improvement`
+`summary` | `section_analysis` | `strength` | `issue` | `missing` | `recommendation` | `improvement`
+
+(Production inserts use application-generated UUIDs; `summary` / `section_analysis` are derived from the LLM JSON and stored as findings.)
 
 ```sql
-CHECK (type IN ('strength', 'issue', 'missing', 'recommendation', 'improvement'))
+-- Prefer soft validation in app code; if using CHECK, include all types:
+CHECK (type IN (
+  'summary', 'section_analysis', 'strength', 'issue',
+  'missing', 'recommendation', 'improvement'
+))
 ```
 
 **Indexes:**
@@ -367,7 +373,7 @@ CREATE INDEX idx_evaluation_findings_evaluation_id ON evaluation_findings (evalu
 CREATE INDEX idx_evaluation_findings_type ON evaluation_findings (evaluation_id, type);
 ```
 
-Use a migration tool (e.g. Alembic) in the FastAPI project.
+Use SQL migrations or boot-time `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` from the Next.js server module (`src/server/db.ts`). Optional Alembic remains only if maintaining the FastAPI experiment path.
 
 ---
 

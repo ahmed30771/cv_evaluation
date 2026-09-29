@@ -115,11 +115,18 @@ Report is the densest screen; Landing stays sparse.
 |  CV Evaluation Report                            |
 |  filename.pdf                                    |
 |                                                  |
-|  Overall  78/100                                 |
+|  Overall  78/100  (Good)                         |
 |                                                  |
-|  ATS 82   Experience 75   Skills 80              |
-|  Content 72   Formatting 85                      |
+|  Executive summary                               |
+|   · 3–5 sentences…                               |
 |                                                  |
+|  Category scores (with bands)                    |
+|  ATS 82 · Experience 75 · Skills 80 …            |
+|                                                  |
+|  Sections detected: summary, skills, …           |
+|                                                  |
+|  Section-by-section analysis                     |
+|   · ...                                          |
 |  Strengths                                       |
 |   · ...                                          |
 |  Issues                                          |
@@ -128,7 +135,7 @@ Report is the densest screen; Landing stays sparse.
 |   · ...                                          |
 |  Recommendations                                 |
 |   · ...                                          |
-|  Suggested improvements                          |
+|  Suggested improvements / rewrites               |
 |   · ...                                          |
 |                                                  |
 |  [ Evaluate another CV ]                         |
@@ -137,9 +144,10 @@ Report is the densest screen; Landing stays sparse.
 
 **Rules:**
 
-- Overall score is the primary numeric focus
-- Category scores secondary (bars or compact score row — not a dashboard of cards)
-- Findings use clear section headings; list items with title + detail
+- Overall score is the primary numeric focus (with qualitative band)
+- Category scores secondary (bars + band labels)
+- Executive summary appears before deep findings
+- Findings use clear section headings; show section chip + severity when present
 - Issue → suggestion pairing when both exist (adjacent or linked by section)
 - Sectioned content is encouraged for readability; avoid nested card stacks
 
@@ -163,20 +171,24 @@ Report is the densest screen; Landing stays sparse.
 | Dropzone | File intake; drag-active state; selected filename chip |
 | Inline validation | Red/neutral helper under dropzone — short |
 | Progress steps | 3 steps: Upload received → Extracting → Analyzing |
-| Overall score display | Large numeral `/100` |
-| Category score row | Label + value; optional thin bar |
-| Finding block | Type label + title + detail paragraph |
+| Overall score display | Large numeral `/100` + band label |
+| Category score row | Label + value + band; optional thin bar |
+| Executive summary panel | Short multi-sentence overview |
+| Section chips | Detected CV sections |
+| Finding block | Type label + optional section chip + title + detail |
 | Empty/loading skeletons | Processing only; not on landing |
 
 **Finding type visual cues (accessible, not color-only):**
 
 | Type | Cue |
 |------|-----|
+| Summary | Shown as dedicated “Executive summary” panel |
+| Section analysis | Label “Section analysis” + section chip |
 | Strength | Label “Strength” + calm positive accent |
 | Issue | Label “Issue” + warning accent |
 | Missing | Label “Missing” + strong attention accent |
 | Recommendation | Label “Recommendation” |
-| Improvement | Label “Suggestion” + example text in muted panel |
+| Improvement | Label “Suggestion” + example rewrite text |
 
 Do not rely on emoji as the only indicator; text labels are required. Optional icons may support labels.
 

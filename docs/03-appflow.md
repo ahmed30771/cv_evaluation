@@ -14,8 +14,9 @@
 | Landing | Brand, value prop, CTA, format notice | Landing |
 | Upload | Drag-drop / file picker, validation | Upload (or Landing) |
 | Processing | Status while extract + evaluate run | Processing / Evaluation detail |
-| Scores | Overall + ATS / Experience / Skills / Content / Formatting | Report |
-| Detailed report | Strengths, Issues, Missing, Recommendations, Improvements | Report |
+| Scores | Overall + ATS / Experience / Skills / Content / Formatting (+ qualitative bands) | Report |
+| Detailed report | Executive summary, section analysis, Strengths, Issues, Missing, Recommendations, Improvements | Report |
+| Sections detected | Chips for parsed CV sections | Report |
 | Retry | Return to upload after failure or after viewing report | Error / Report → Landing |
 
 ### Phase 2 features (documented, not navigable in MVP)
@@ -146,15 +147,18 @@ Frontend polls `GET /evaluations/{id}` every 2–3 seconds until `completed` or 
 **Layout order:**
 
 1. Header: “CV Evaluation Report” + filename
-2. Overall score (prominent)
-3. Category scores (ATS, Experience, Skills, Content, Formatting)
-4. Findings grouped:
+2. Overall score (prominent) + qualitative band
+3. Executive summary
+4. Category scores with bands
+5. Sections detected
+6. Section-by-section analysis
+7. Findings grouped:
    - Strengths
    - Issues
    - Missing information
    - Recommendations
-   - Suggested improvements
-5. CTA: “Evaluate another CV” → `/`
+   - Suggested improvements / rewrites
+8. CTA: “Evaluate another CV” → `/`
 
 **Actions:**
 

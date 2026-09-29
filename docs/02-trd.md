@@ -1,8 +1,8 @@
 # Technical Requirements Document (TRD)
 
 **Product:** CV Evaluation Platform  
-**Version:** 1.0 (MVP)  
-**Stack:** Next.js (frontend) · FastAPI/Python (backend) · PostgreSQL (Neon) · OpenRouter
+**Version:** 1.1 (MVP)  
+**Stack:** Next.js (UI + API Route Handlers) · PostgreSQL (Neon) · OpenRouter
 
 ---
 
@@ -11,36 +11,39 @@
 ```mermaid
 flowchart LR
   User --> NextJS
-  NextJS -->|multipart upload| FastAPI
-  FastAPI --> Extract
+  NextJS -->|Route Handlers multipart| ApiRoutes
+  ApiRoutes --> Extract
   Extract --> OpenRouter
-  FastAPI --> Neon
-  OpenRouter --> FastAPI
-  FastAPI -->|JSON report| NextJS
+  ApiRoutes --> Neon
+  OpenRouter --> ApiRoutes
+  ApiRoutes -->|JSON report| NextJS
 ```
 
 | Layer | Technology | Responsibility |
 |-------|------------|----------------|
-| Frontend | Next.js (App Router), TypeScript, Tailwind CSS | Landing, upload UI, processing poll, report UI |
-| Backend | FastAPI, Python 3.11+ | Upload, validation, extraction, LLM orchestration, persistence, report API |
-| Database | PostgreSQL on Neon | Evaluations, extractions, scores, findings |
-| AI | OpenRouter (OpenAI-compatible HTTP API) | Structured CV evaluation JSON |
-| File storage (MVP) | Local disk locally; `/tmp` on Vercel serverless | Hold uploaded file during processing |
+| UI | Next.js App Router, TypeScript, Tailwind CSS | Landing, upload, processing poll, detailed report |
+| API | Next.js Route Handlers under `src/app/api/` | Upload, validation, extraction, LLM orchestration, persistence, report |
+| Database | PostgreSQL on Neon (`@neondatabase/serverless`) | Evaluations, extractions, scores, findings |
+| AI | OpenRouter (chat completions) | Structured CV evaluation JSON + fallbacks on rate limit |
+| Parsers | `unpdf` (PDF), `mammoth` (DOCX) | Text extraction on Vercel serverless |
+| Optional | `backend/` FastAPI | Local/Python experiments only — **not** the Vercel production path |
 
 **Repository layout:**
 
 ```text
 /
-  src/                 # Next.js App Router (UI)
-  api/index.py         # Vercel Python entry → FastAPI app
-  backend/             # FastAPI package (app/, services, models)
-  requirements.txt     # Python deps for Vercel + local
-  package.json         # Next.js at repo root
-  vercel.json          # maxDuration, /health rewrite
-  docs/                # This documentation
+  src/app/                 # Next.js pages + API routes
+  src/server/              # extract, openrouter, scoring, integrity, pipeline, db
+  src/components/
+  backend/                 # Optional FastAPI (local only)
+  package.json
+  vercel.json              # maxDuration for API routes; /health rewrite
+  docs/
 ```
 
-**Deployment (MVP):** One Vercel project (same domain). Next.js serves pages; FastAPI handles `/api/v1/*` and `/health` via `api/index.py`. Do not set `NEXT_PUBLIC_API_BASE_URL` in production (same-origin). Locally, point it at `http://127.0.0.1:8000`.
+**Deployment (MVP):** One Vercel project, Root Directory = repo root.  
+API is same-origin (`/api/v1/...`, `/api/health`). Do **not** set `NEXT_PUBLIC_API_BASE_URL` on Vercel.  
+Env vars on Vercel: `DATABASE_URL`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_BASE_URL`, `MAX_UPLOAD_BYTES`.
 
 ---
 
@@ -49,25 +52,21 @@ flowchart LR
 - Next.js App Router + TypeScript
 - Tailwind CSS for styling
 - Pages/routes (MVP):
-  - `/` — Landing + upload entry
-  - `/evaluate` or landing-integrated upload — Upload UI
-  - `/evaluations/[id]` — Processing + report view
-- Call FastAPI via same origin in production (`/api/v1/...`), or `NEXT_PUBLIC_API_BASE_URL` for local backend
-- Client validation before upload: extension, MIME when available, size
-- Poll `GET /evaluations/{id}` until `completed` or `failed`, then load report
+  - `/` — Landing + upload
+  - `/evaluations/[id]` — Processing + report (or error)
+- Call same-origin API: `/api/v1/evaluations`, `/api/v1/evaluations/{id}`, `/api/v1/evaluations/{id}/report`
+- Client validation before upload: extension, size
+- After upload, navigate to `/evaluations/[id]` and poll status until `completed` or `failed`
 
 ---
 
-## 3. Backend requirements
+## 3. API / server requirements
 
-- FastAPI + Uvicorn
-- Async-friendly where practical; CPU-bound parsing may run in threadpool
-- Parsers:
-  - PDF: `pypdf` (or equivalent)
-  - DOCX: `python-docx`
-- Section identification: heuristic headers + optional light LLM assist; store both `raw_text` and `sections` JSON
-- OpenRouter client: HTTPS chat completions with JSON response format / schema instructions
-- Persist every evaluation lifecycle transition in Neon
+- Next.js Route Handlers, `runtime = "nodejs"`, `maxDuration` up to 60s
+- PDF via `unpdf`; DOCX via `mammoth`
+- Section identification: heuristic headers; store `raw_text` + `sections` JSON
+- OpenRouter client with primary model + free-model fallbacks on HTTP 429
+- Persist evaluation lifecycle in Neon; sync pipeline inside `POST /api/v1/evaluations`
 
 ---
 
@@ -114,11 +113,15 @@ Each category score should reflect explicit checklist signals, for example:
 
 Require JSON with:
 
-- `scores`: object with the five category integers (and optional overall)
+- `scores`: five category integers (overall recomputed server-side)
+- `summary`: 3–5 sentence executive overview (stored as finding type `summary`)
+- `section_analysis`: ≥5 section verdicts (stored as finding type `section_analysis`)
 - `findings`: array of `{ type, section, title, detail, severity? }`
-- `types`: `strength` | `issue` | `missing` | `recommendation` | `improvement`
+- Finding `type` values: `strength` | `issue` | `missing` | `recommendation` | `improvement` (plus `summary` / `section_analysis` derived above)
 
-Use low temperature (e.g. `0–0.3`). Reject/repair invalid JSON; clamp scores to 0–100.
+**Depth minimums (prompt-enforced):** ≥3 strengths, ≥3 issues, ≥2 missing, ≥3 recommendations, ≥3 improvements (with rewrite examples when useful).
+
+Use low temperature (e.g. `0–0.3`). Reject/repair invalid JSON; clamp scores to 0–100. Prefer free models with fallbacks on rate limit.
 
 ### 4.5 Prompt construction (anti-gaming)
 
@@ -293,7 +296,7 @@ Processing model:
 
 **Deterministic checklist overlay (recommended for MVP integrity):**
 
-Before or after the LLM call, compute simple signals in Python (no LLM):
+Before or after the LLM call, compute simple signals in **server TypeScript** (no LLM):
 
 - Contact email/phone present?
 - Experience section non-empty?
@@ -324,16 +327,15 @@ Use these signals to **cap** or **adjust** scores when the LLM output is implaus
 
 ## 8. Environment variables
 
-| Variable | Service | Purpose |
-|----------|---------|---------|
-| `DATABASE_URL` | Backend | Neon Postgres connection string |
-| `OPENROUTER_API_KEY` | Backend | OpenRouter authentication |
-| `OPENROUTER_MODEL` | Backend | Model id (configurable) |
-| `OPENROUTER_BASE_URL` | Backend | Default `https://openrouter.ai/api/v1` |
-| `MAX_UPLOAD_BYTES` | Backend | Default `5242880` |
-| `UPLOAD_DIR` | Backend | Local storage path (ignored on Vercel; uses `/tmp`) |
-| `CORS_ORIGINS` | Backend | Allowed origins (set to the Vercel app URL in prod) |
-| `NEXT_PUBLIC_API_BASE_URL` | Frontend | Local only (`http://127.0.0.1:8000`). **Unset on Vercel** for same-origin API |
+| Variable | Where | Purpose |
+|----------|-------|---------|
+| `DATABASE_URL` | Vercel + `.env.local` | Neon Postgres connection string |
+| `OPENROUTER_API_KEY` | Vercel + `.env.local` | OpenRouter authentication |
+| `OPENROUTER_MODEL` | Vercel + `.env.local` | Primary model (e.g. `google/gemma-4-26b-a4b-it:free`) |
+| `OPENROUTER_BASE_URL` | Vercel + `.env.local` | Default `https://openrouter.ai/api/v1` |
+| `MAX_UPLOAD_BYTES` | Optional | Default `5242880` |
+
+Do **not** set `NEXT_PUBLIC_API_BASE_URL` on Vercel (API is same-origin Next.js routes).
 
 ---
 
@@ -342,10 +344,11 @@ Use these signals to **cap** or **adjust** scores when the LLM output is implaus
 | Item | Detail |
 |------|--------|
 | Projects | **One** Vercel project; Root Directory = repo root |
-| UI | Next.js at repository root |
-| API | Python serverless via [`api/index.py`](../api/index.py) importing `backend/app` |
-| Uploads | Write under `/tmp` when `VERCEL` is set |
-| Env | Set DB + OpenRouter secrets in Vercel; do not commit `.env` |
+| UI + API | Next.js pages + `src/app/api/**` Route Handlers |
+| Health | `/api/health` (rewrite `/health` → `/api/health`) |
+| Uploads | Processed in-memory / request buffer (no durable public file URLs) |
+| Env | Set DB + OpenRouter secrets in Vercel; do not commit `.env` / `.env.local` |
+| Rate limits | Free OpenRouter models may 429 — server tries fallback models |
 
 ## 9. Error handling and resilience
 
@@ -353,9 +356,10 @@ Use these signals to **cap** or **adjust** scores when the LLM output is implaus
 |---------|----------|
 | Corrupt / empty PDF/DOCX | `failed` with user-safe message |
 | No extractable text (scanned PDF) | `failed`; suggest text-based PDF/DOCX |
-| OpenRouter timeout | Retry once with backoff; then `failed` |
+| OpenRouter timeout / 429 | Retry + model fallbacks; then clear rate-limit / unavailable message |
 | Invalid LLM JSON | One repair/re-ask; then `failed` |
-| DB unavailable | 503 to client; do not claim success |
+| DB unavailable / missing env | 500 with explicit misconfiguration message when possible |
+| Missing `injection_heuristic_hit` | Always insert `false` on create; ALTER ADD COLUMN IF NOT EXISTS on boot |
 
 ---
 
