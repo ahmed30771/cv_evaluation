@@ -236,5 +236,5 @@ Example row:
 - Guest can complete Landing → Upload → Processing → Report without login
 - Invalid files never leave Upload with a silent failure
 - Processing always resolves to Report or Error
-- Report always shows overall score, five categories, and grouped findings
+- Report always shows overall score (with band), five categories, executive summary when available, section analysis, and grouped findings
 - “Evaluate another CV” returns user to a clean upload path
