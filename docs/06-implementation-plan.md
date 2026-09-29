@@ -12,17 +12,22 @@ This plan sequences delivery for the MVP priority path: **Upload CV → Extract 
 
 ```text
 /
-  frontend/                 # Next.js App Router + TypeScript + Tailwind
-  backend/                  # FastAPI app
+  src/                      # Next.js App Router + TypeScript + Tailwind
+  api/index.py              # Vercel entry for FastAPI
+  backend/                  # FastAPI package
     app/
       api/
-      services/             # extract, openrouter, scoring
-      models/               # SQLAlchemy / SQLModel
-      schemas/              # Pydantic
-    alembic/
-  docs/                     # Product & technical docs (this folder)
-  README.md                 # Root run instructions (added during scaffold)
+      services/             # extract, openrouter, scoring, integrity
+      models/
+      schemas/
+  requirements.txt
+  package.json
+  vercel.json
+  docs/
+  README.md
 ```
+
+**Deploy target:** single Vercel project (UI + API same domain).
 
 ---
 
@@ -32,16 +37,16 @@ This plan sequences delivery for the MVP priority path: **Upload CV → Extract 
 
 **Work**
 
-- Create `frontend` (Next.js + TS + Tailwind) and `backend` (FastAPI) projects
+- Next.js at repo root + FastAPI under `backend/`
 - Connect Neon via `DATABASE_URL`
-- Add env samples (`.env.example`) for backend and frontend
-- CORS for local frontend origin
-- `GET /health` on API
+- Env samples: `backend/.env`, root `.env.local` (local API URL only)
+- CORS for local + `*.vercel.app`
+- `GET /health` on API; Vercel rewrite for `/health` → Python function
 
 **Acceptance**
 
-- [ ] `frontend` starts locally
-- [ ] `backend` starts locally and returns health OK
+- [ ] `npm run dev` starts the UI
+- [ ] `uvicorn` backend returns health OK locally
 - [ ] Neon connection succeeds from backend
 
 ---
@@ -194,11 +199,12 @@ Ordered later:
 
 | Topic | Decision |
 |-------|----------|
-| Processing model | Prefer return ID immediately + background task; frontend polls |
+| Processing model | **Sync** inside `POST /evaluations` (required for Vercel serverless); UI still uses status/report routes |
 | Scoring | Rubric weights in code; overall recomputed server-side |
 | Auth | None in MVP |
-| File storage | Local `UPLOAD_DIR` for MVP; abstract path for later S3 |
+| File storage | Local `UPLOAD_DIR` locally; `/tmp` on Vercel |
 | API versioning | `/api/v1` |
+| Deploy | One Vercel project; same-origin API in production |
 | Docs source of truth | `docs/01`–`06` |
 | Score integrity | CV is untrusted data; prompt isolation + heuristics + checklist caps (TRD §7.1) |
 

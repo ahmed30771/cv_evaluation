@@ -5,11 +5,11 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
-from app.database import SessionLocal, get_db
+from app.database import get_db
 from app.models import Evaluation
 from app.schemas import EvaluationCreated, EvaluationStatus, FindingOut, ReportOut, ScoresOut
 from app.services.pipeline import process_evaluation
@@ -27,17 +27,8 @@ ALLOWED_MIME = {
 }
 
 
-def _run_pipeline(evaluation_id: uuid.UUID) -> None:
-    db = SessionLocal()
-    try:
-        process_evaluation(db, evaluation_id)
-    finally:
-        db.close()
-
-
 @router.post("/evaluations", response_model=EvaluationCreated, status_code=status.HTTP_201_CREATED)
 async def create_evaluation(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -60,7 +51,7 @@ async def create_evaluation(
 
     file_type = ALLOWED_EXT[ext]
     evaluation_id = uuid.uuid4()
-    upload_root = Path(settings.upload_dir)
+    upload_root = Path(settings.effective_upload_dir)
     upload_root.mkdir(parents=True, exist_ok=True)
     dest = upload_root / f"{evaluation_id}{ext}"
     dest.write_bytes(data)
@@ -77,7 +68,9 @@ async def create_evaluation(
     db.commit()
     db.refresh(evaluation)
 
-    background_tasks.add_task(_run_pipeline, evaluation_id)
+    # Sync processing — required on Vercel serverless (no reliable background workers)
+    process_evaluation(db, evaluation_id)
+    db.refresh(evaluation)
 
     return EvaluationCreated(
         id=evaluation.id,

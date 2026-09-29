@@ -2,62 +2,65 @@
 
 AI-powered CV evaluation: upload PDF/DOCX → extract → score → report.
 
-**Stack:** Next.js (frontend) · FastAPI (backend) · Neon PostgreSQL · OpenRouter
+**Stack:** Next.js + FastAPI (same Vercel project) · Neon PostgreSQL · OpenRouter
 
 ## Local setup
 
-### 1. Backend
+### Backend
 
 ```bash
 cd backend
 python -m venv .venv
-# Windows:
-.\.venv\Scripts\activate
+.\.venv\Scripts\activate   # Windows
 pip install -r requirements.txt
-# Copy secrets into backend/.env (see .env.example)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# secrets in backend/.env
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Health check: http://127.0.0.1:8000/health
-
-### 2. Frontend
+### Frontend (repo root)
 
 ```bash
-cd frontend
 npm install
-# Set NEXT_PUBLIC_API_BASE_URL in .env.local
+# .env.local → NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 npm run dev
 ```
 
 Open http://localhost:3000
 
-## Deploy (Vercel + API host)
+## Deploy ONE project on Vercel
 
-Vercel hosts the **Next.js frontend**. The FastAPI backend needs a Python host with longer timeouts (LLM evaluation can take up to ~60s). Recommended: **Railway**, **Render**, or **Fly.io**.
+Same repo, **one** Vercel project — Next.js UI + Python API on the same domain.
 
-### Frontend → Vercel
+1. Push latest code to GitHub  
+2. [vercel.com/new](https://vercel.com/new) → import `cv_evaluation`  
+3. **Root Directory:** leave **empty** / `.` (repo root) — do **not** set `frontend` or `backend`  
+4. Framework: Next.js (auto)  
+5. Add Environment Variables (Production):
 
-1. Push this repo to GitHub.
-2. Import the project in Vercel.
-3. Set **Root Directory** to `frontend`.
-4. Add env var:
-   - `NEXT_PUBLIC_API_BASE_URL` = your public API URL (e.g. `https://cv-api.up.railway.app`)
-5. Deploy.
+| Name | Value |
+|------|--------|
+| `DATABASE_URL` | Neon URL |
+| `OPENROUTER_API_KEY` | your key |
+| `OPENROUTER_MODEL` | `google/gemma-4-31b-it:free` |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` |
+| `CORS_ORIGINS` | `https://YOUR-APP.vercel.app` |
+| `MAX_UPLOAD_BYTES` | `5242880` |
 
-### Backend → Railway / Render
+Do **not** set `NEXT_PUBLIC_API_BASE_URL` on Vercel (API is same origin: `/api/v1/...`).
 
-1. Deploy from `backend/` (Dockerfile included).
-2. Set env vars from `backend/.env.example`:
-   - `DATABASE_URL` (Neon)
-   - `OPENROUTER_API_KEY`
-   - `OPENROUTER_MODEL`
-   - `OPENROUTER_BASE_URL`
-   - `CORS_ORIGINS` = your Vercel domain (and `https://*.vercel.app` is also allowed via regex)
-3. Expose port `8000` (or the platform `$PORT`).
+6. Deploy  
+7. Test: `https://YOUR-APP.vercel.app/health` and the site home page  
 
-### Important security note
+### How it works
 
-Never commit `.env` files. If API keys were shared in chat, **rotate** the OpenRouter key and Neon password.
+- Next.js serves pages from repo root  
+- FastAPI is exposed via [`api/index.py`](api/index.py) (Vercel Python serverless)  
+- Upload runs evaluation **synchronously** (needed on serverless)  
+- `maxDuration: 60` in [`vercel.json`](vercel.json) — **Pro** plan recommended for LLM time  
+
+### Security
+
+Never commit `.env` / `.env.local`. Rotate keys if they were exposed.
 
 ## Docs
 

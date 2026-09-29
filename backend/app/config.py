@@ -1,3 +1,5 @@
+import os
+import tempfile
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -13,6 +15,17 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 5_242_880
     upload_dir: str = "uploads"
     cors_origins: str = "http://localhost:3000"
+
+    @property
+    def on_vercel(self) -> bool:
+        return bool(os.getenv("VERCEL"))
+
+    @property
+    def effective_upload_dir(self) -> str:
+        # Vercel serverless only allows writes under /tmp
+        if self.on_vercel:
+            return os.path.join(tempfile.gettempdir(), "cv-uploads")
+        return self.upload_dir
 
 
 @lru_cache

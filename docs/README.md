@@ -2,8 +2,9 @@
 
 Project documentation for the AI-Powered CV Evaluation Platform.
 
-**Stack:** Next.js (frontend) · FastAPI/Python (backend) · PostgreSQL on Neon · OpenRouter  
+**Stack:** Next.js (repo root) · FastAPI (`backend/` + `api/index.py`) · PostgreSQL on Neon · OpenRouter  
 **MVP:** Upload CV → Extract text → AI evaluation → Score → Report  
+**Deploy:** One Vercel project (same domain for UI + API)  
 **Phase 2:** Auth/history, Job Description matching, Admin analytics  
 **Integrity:** CV text is untrusted — prompt-injection / score-gaming defenses are specified in [02-trd.md](02-trd.md) §7.1 (also PRD NFR-9 / risks).
 

@@ -13,7 +13,7 @@ from app.api.routes import router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
+    Path(settings.effective_upload_dir).mkdir(parents=True, exist_ok=True)
     init_db()
     yield
 

@@ -25,16 +25,22 @@ flowchart LR
 | Backend | FastAPI, Python 3.11+ | Upload, validation, extraction, LLM orchestration, persistence, report API |
 | Database | PostgreSQL on Neon | Evaluations, extractions, scores, findings |
 | AI | OpenRouter (OpenAI-compatible HTTP API) | Structured CV evaluation JSON |
-| File storage (MVP) | Local/temp disk on API server (or private object storage if deployed) | Hold uploaded file during processing |
+| File storage (MVP) | Local disk locally; `/tmp` on Vercel serverless | Hold uploaded file during processing |
 
-**Monorepo layout (recommended):**
+**Repository layout:**
 
 ```text
 /
-  frontend/          # Next.js app
-  backend/           # FastAPI app
-  docs/              # This documentation
+  src/                 # Next.js App Router (UI)
+  api/index.py         # Vercel Python entry → FastAPI app
+  backend/             # FastAPI package (app/, services, models)
+  requirements.txt     # Python deps for Vercel + local
+  package.json         # Next.js at repo root
+  vercel.json          # maxDuration, /health rewrite
+  docs/                # This documentation
 ```
+
+**Deployment (MVP):** One Vercel project (same domain). Next.js serves pages; FastAPI handles `/api/v1/*` and `/health` via `api/index.py`. Do not set `NEXT_PUBLIC_API_BASE_URL` in production (same-origin). Locally, point it at `http://127.0.0.1:8000`.
 
 ---
 
@@ -46,7 +52,7 @@ flowchart LR
   - `/` — Landing + upload entry
   - `/evaluate` or landing-integrated upload — Upload UI
   - `/evaluations/[id]` — Processing + report view
-- Call FastAPI via configured `NEXT_PUBLIC_API_BASE_URL` (or server-side proxy)
+- Call FastAPI via same origin in production (`/api/v1/...`), or `NEXT_PUBLIC_API_BASE_URL` for local backend
 - Client validation before upload: extension, MIME when available, size
 - Poll `GET /evaluations/{id}` until `completed` or `failed`, then load report
 
@@ -234,10 +240,11 @@ Available when `status === completed`.
 4. Validate/normalize JSON → save `evaluation_scores` + `evaluation_findings`
 5. Set `completed` (or `failed` with `error_message`); record `processing_ms`
 
-Processing may be:
+Processing model:
 
-- **MVP simple:** background task / asyncio after upload response, or synchronous with long request + status updates
-- Preferred: return ID quickly, process in background worker/task, frontend polls
+- **Production (Vercel serverless):** run the full pipeline **synchronously** inside `POST /evaluations` (background workers are not reliable after the response). Frontend may still navigate to `/evaluations/[id]` and load status/report.
+- **Local:** same sync path is fine for MVP consistency; optional background later if needed.
+- Function `maxDuration` should be ≥ 60s (Vercel Pro recommended for LLM latency).
 
 ---
 
@@ -324,11 +331,21 @@ Use these signals to **cap** or **adjust** scores when the LLM output is implaus
 | `OPENROUTER_MODEL` | Backend | Model id (configurable) |
 | `OPENROUTER_BASE_URL` | Backend | Default `https://openrouter.ai/api/v1` |
 | `MAX_UPLOAD_BYTES` | Backend | Default `5242880` |
-| `UPLOAD_DIR` | Backend | Local storage path for MVP |
-| `CORS_ORIGINS` | Backend | Allowed frontend origins |
-| `NEXT_PUBLIC_API_BASE_URL` | Frontend | FastAPI base URL |
+| `UPLOAD_DIR` | Backend | Local storage path (ignored on Vercel; uses `/tmp`) |
+| `CORS_ORIGINS` | Backend | Allowed origins (set to the Vercel app URL in prod) |
+| `NEXT_PUBLIC_API_BASE_URL` | Frontend | Local only (`http://127.0.0.1:8000`). **Unset on Vercel** for same-origin API |
 
 ---
+
+## 8.1 Deployment notes (Vercel single project)
+
+| Item | Detail |
+|------|--------|
+| Projects | **One** Vercel project; Root Directory = repo root |
+| UI | Next.js at repository root |
+| API | Python serverless via [`api/index.py`](../api/index.py) importing `backend/app` |
+| Uploads | Write under `/tmp` when `VERCEL` is set |
+| Env | Set DB + OpenRouter secrets in Vercel; do not commit `.env` |
 
 ## 9. Error handling and resilience
 
