@@ -27,8 +27,12 @@ export async function runEvaluationFromUpload(opts: {
   const started = Date.now();
 
   await sql`
-    INSERT INTO evaluations (id, status, original_filename, file_type, file_size, storage_path)
-    VALUES (${id}, 'uploaded', ${opts.filename}, ${opts.fileType}, ${opts.fileSize}, '')
+    INSERT INTO evaluations (
+      id, status, original_filename, file_type, file_size, storage_path, injection_heuristic_hit
+    )
+    VALUES (
+      ${id}, 'uploaded', ${opts.filename}, ${opts.fileType}, ${opts.fileSize}, '', false
+    )
   `;
 
   try {
