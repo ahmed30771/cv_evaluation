@@ -3,12 +3,21 @@ import { neon } from "@neondatabase/serverless";
 export function getSql() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
-  return neon(url);
+  // Neon pooler + channel_binding can break some drivers; strip if present
+  const cleaned = url.replace("&channel_binding=require", "").replace("?channel_binding=require&", "?");
+  return neon(cleaned);
 }
 
 export async function ensureSchema() {
   const sql = getSql();
-  await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+
+  // Best-effort; Neon may already provide gen_random_uuid()
+  try {
+    await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+  } catch {
+    /* ignore */
+  }
+
   await sql`
     CREATE TABLE IF NOT EXISTS evaluations (
       id UUID PRIMARY KEY,
@@ -24,9 +33,17 @@ export async function ensureSchema() {
       injection_heuristic_hit BOOLEAN NOT NULL DEFAULT false
     )
   `;
+
+  // Upgrade older tables created without this column
+  try {
+    await sql`ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS injection_heuristic_hit BOOLEAN NOT NULL DEFAULT false`;
+  } catch {
+    /* ignore */
+  }
+
   await sql`
     CREATE TABLE IF NOT EXISTS cv_extractions (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      id UUID PRIMARY KEY,
       evaluation_id UUID NOT NULL UNIQUE REFERENCES evaluations(id) ON DELETE CASCADE,
       raw_text TEXT NOT NULL,
       sections JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -35,7 +52,7 @@ export async function ensureSchema() {
   `;
   await sql`
     CREATE TABLE IF NOT EXISTS evaluation_scores (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      id UUID PRIMARY KEY,
       evaluation_id UUID NOT NULL UNIQUE REFERENCES evaluations(id) ON DELETE CASCADE,
       overall SMALLINT NOT NULL,
       ats SMALLINT NOT NULL,
@@ -47,7 +64,7 @@ export async function ensureSchema() {
   `;
   await sql`
     CREATE TABLE IF NOT EXISTS evaluation_findings (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      id UUID PRIMARY KEY,
       evaluation_id UUID NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
       type TEXT NOT NULL,
       section TEXT,

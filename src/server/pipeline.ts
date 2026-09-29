@@ -7,11 +7,12 @@ import { applyChecklistCaps, checklistSignals } from "./scoring";
 
 function safeError(err: unknown): string {
   const msg = String(err ?? "");
+  if (/DATABASE_URL|OPENROUTER_API_KEY|misconfigured/i.test(msg)) return msg.slice(0, 300);
   if (/OpenRouter|401|402|429/i.test(msg)) {
     return "AI evaluation service is temporarily unavailable. Please try again.";
   }
-  if (/extract|text/i.test(msg)) return msg.slice(0, 300);
-  return "Evaluation failed. Please try another file or try again later.";
+  if (/extract|text|pdf|docx|mammoth|unpdf/i.test(msg)) return msg.slice(0, 300);
+  return `Evaluation failed: ${msg.slice(0, 220)}`;
 }
 
 export async function runEvaluationFromUpload(opts: {
@@ -44,8 +45,8 @@ export async function runEvaluationFromUpload(opts: {
     const injectionHit = detectInjection(rawText);
 
     await sql.query(
-      `INSERT INTO cv_extractions (evaluation_id, raw_text, sections) VALUES ($1, $2, $3::jsonb)`,
-      [id, rawText, JSON.stringify(sections)],
+      `INSERT INTO cv_extractions (id, evaluation_id, raw_text, sections) VALUES ($1, $2, $3, $4::jsonb)`,
+      [randomUUID(), id, rawText, JSON.stringify(sections)],
     );
     await sql`
       UPDATE evaluations
@@ -72,8 +73,9 @@ export async function runEvaluationFromUpload(opts: {
     }
 
     await sql`
-      INSERT INTO evaluation_scores (evaluation_id, overall, ats, experience, skills, content, formatting)
+      INSERT INTO evaluation_scores (id, evaluation_id, overall, ats, experience, skills, content, formatting)
       VALUES (
+        ${randomUUID()},
         ${id},
         ${scores.overall},
         ${scores.ats},
@@ -86,8 +88,9 @@ export async function runEvaluationFromUpload(opts: {
 
     for (const f of findings) {
       await sql`
-        INSERT INTO evaluation_findings (evaluation_id, type, section, title, detail, severity, sort_order)
+        INSERT INTO evaluation_findings (id, evaluation_id, type, section, title, detail, severity, sort_order)
         VALUES (
+          ${randomUUID()},
           ${id},
           ${f.type},
           ${f.section ?? null},
@@ -111,6 +114,7 @@ export async function runEvaluationFromUpload(opts: {
 
     return { id, status: "completed" as const, original_filename: opts.filename };
   } catch (err) {
+    console.error("Evaluation pipeline failed", err);
     const processingMs = Date.now() - started;
     await sql`
       UPDATE evaluations
@@ -120,6 +124,7 @@ export async function runEvaluationFromUpload(opts: {
           error_message = ${safeError(err)}
       WHERE id = ${id}
     `;
-    return { id, status: "failed" as const, original_filename: opts.filename };
+    // Surface failure to the client instead of a silent 201
+    throw new Error(safeError(err));
   }
 }

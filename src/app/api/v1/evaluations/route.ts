@@ -6,15 +6,34 @@ export const maxDuration = 60;
 
 const MAX_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 5_242_880);
 
+function getUploadBlob(value: FormDataEntryValue | null): (Blob & { name?: string }) | null {
+  if (!value || typeof value !== "object") return null;
+  if (!("arrayBuffer" in value) || typeof (value as Blob).arrayBuffer !== "function") return null;
+  return value as Blob & { name?: string };
+}
+
 export async function POST(req: Request) {
   try {
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json(
+        { detail: "Server misconfigured: DATABASE_URL is missing." },
+        { status: 500 },
+      );
+    }
+    if (!process.env.OPENROUTER_API_KEY) {
+      return NextResponse.json(
+        { detail: "Server misconfigured: OPENROUTER_API_KEY is missing." },
+        { status: 500 },
+      );
+    }
+
     const form = await req.formData();
-    const file = form.get("file");
-    if (!file || !(file instanceof File)) {
+    const file = getUploadBlob(form.get("file"));
+    if (!file) {
       return NextResponse.json({ detail: "Please choose a CV file." }, { status: 400 });
     }
 
-    const name = file.name || "";
+    const name = ("name" in file && file.name ? String(file.name) : "") || "cv.pdf";
     const lower = name.toLowerCase();
     let fileType: "pdf" | "docx" | null = null;
     if (lower.endsWith(".pdf")) fileType = "pdf";
@@ -48,6 +67,7 @@ export async function POST(req: Request) {
       { status: 201 },
     );
   } catch (err) {
+    console.error("POST /api/v1/evaluations failed", err);
     const msg = err instanceof Error ? err.message : "Upload failed";
     return NextResponse.json({ detail: msg }, { status: 500 });
   }

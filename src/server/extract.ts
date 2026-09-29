@@ -1,5 +1,5 @@
 import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
+import { extractText as extractPdfText } from "unpdf";
 
 const SECTION_HEADERS: Record<string, RegExp[]> = {
   personal_information: [/personal\s+information/i, /^contact$/i, /^profile$/i],
@@ -24,17 +24,9 @@ function matchHeader(line: string): string | null {
 
 export async function extractText(buffer: Buffer, fileType: "pdf" | "docx"): Promise<string> {
   if (fileType === "pdf") {
-    const parser = new PDFParse({ data: buffer });
-    try {
-      const result = await parser.getText();
-      const text =
-        typeof result === "string"
-          ? result
-          : String((result as { text?: string })?.text ?? "");
-      return text.trim();
-    } finally {
-      await parser.destroy().catch(() => undefined);
-    }
+    const result = await extractPdfText(new Uint8Array(buffer));
+    const text = Array.isArray(result.text) ? result.text.join("\n") : String(result.text ?? "");
+    return text.trim();
   }
   const result = await mammoth.extractRawText({ buffer });
   return (result.value || "").trim();
