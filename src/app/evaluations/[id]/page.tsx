@@ -13,12 +13,21 @@ const STATUS_LABEL: Record<string, string> = {
   failed: "Failed",
 };
 
+function scoreBand(value: number): string {
+  if (value >= 85) return "Excellent";
+  if (value >= 70) return "Good";
+  if (value >= 55) return "Fair";
+  return "Needs work";
+}
+
 function ScoreRow({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ marginBottom: "0.85rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.35rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.35rem", gap: "1rem" }}>
         <span style={{ fontWeight: 600 }}>{label}</span>
-        <span>{value}/100</span>
+        <span>
+          {value}/100 <span style={{ color: "var(--muted)", fontWeight: 500 }}>({scoreBand(value)})</span>
+        </span>
       </div>
       <div className="score-bar" aria-hidden>
         <span style={{ width: `${value}%` }} />
@@ -27,21 +36,61 @@ function ScoreRow({ label, value }: { label: string; value: number }) {
   );
 }
 
-function FindingsGroup({ title, items }: { title: string; items: Finding[] }) {
-  if (!items.length) return null;
+function FindingsGroup({
+  title,
+  items,
+  emptyHint,
+}: {
+  title: string;
+  items: Finding[];
+  emptyHint?: string;
+}) {
   return (
     <section style={{ marginTop: "1.5rem" }}>
       <h3 className="display" style={{ margin: "0 0 0.75rem", fontSize: "1.25rem" }}>
         {title}
+        <span style={{ marginLeft: "0.5rem", fontSize: "0.95rem", color: "var(--muted)", fontFamily: "var(--font-sans)" }}>
+          ({items.length})
+        </span>
       </h3>
       <div className="panel">
+        {!items.length && (
+          <p style={{ margin: 0, color: "var(--muted)" }}>{emptyHint || "Nothing flagged in this category."}</p>
+        )}
         {items.map((f, idx) => (
-          <article key={`${f.type}-${idx}`} className={`finding ${f.type}`}>
-            <div style={{ fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted)" }}>
-              {f.type}
+          <article key={`${f.type}-${idx}`} className={`finding ${f.type === "section_analysis" ? "recommendation" : f.type}`}>
+            <div
+              style={{
+                display: "flex",
+                gap: "0.5rem",
+                flexWrap: "wrap",
+                alignItems: "center",
+                fontSize: "0.75rem",
+                fontWeight: 700,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                color: "var(--muted)",
+              }}
+            >
+              <span>{f.type.replace("_", " ")}</span>
+              {f.section && (
+                <span
+                  style={{
+                    border: "1px solid var(--line)",
+                    borderRadius: 999,
+                    padding: "0.1rem 0.45rem",
+                    textTransform: "none",
+                    letterSpacing: 0,
+                    fontWeight: 600,
+                  }}
+                >
+                  {f.section}
+                </span>
+              )}
+              {f.severity && <span>{f.severity} severity</span>}
             </div>
-            <h4 style={{ margin: "0.2rem 0" }}>{f.title}</h4>
-            <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.5 }}>{f.detail}</p>
+            <h4 style={{ margin: "0.35rem 0 0.25rem" }}>{f.title}</h4>
+            <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{f.detail}</p>
           </article>
         ))}
       </div>
@@ -90,6 +139,8 @@ export default function EvaluationPage() {
   const grouped = useMemo(() => {
     const findings = report?.findings ?? [];
     return {
+      summary: findings.filter((f) => f.type === "summary"),
+      section_analysis: findings.filter((f) => f.type === "section_analysis"),
       strength: findings.filter((f) => f.type === "strength"),
       issue: findings.filter((f) => f.type === "issue"),
       missing: findings.filter((f) => f.type === "missing"),
@@ -153,6 +204,7 @@ export default function EvaluationPage() {
   }
 
   const scores = report.scores;
+  const executive = grouped.summary[0];
 
   return (
     <main className="container" style={{ padding: "3rem 0 4rem" }}>
@@ -171,6 +223,7 @@ export default function EvaluationPage() {
               {scores.overall}
               <span style={{ fontSize: "1.2rem", color: "var(--muted)" }}>/100</span>
             </div>
+            <div style={{ marginTop: "0.35rem", fontWeight: 600 }}>{scoreBand(scores.overall)}</div>
           </div>
           {report.processing_ms != null && (
             <div style={{ color: "var(--muted)" }}>Processed in {(report.processing_ms / 1000).toFixed(1)}s</div>
@@ -178,7 +231,19 @@ export default function EvaluationPage() {
         </div>
       </section>
 
-      <section className="panel fade-up-delay">
+      {executive && (
+        <section className="panel fade-up" style={{ marginBottom: "1.25rem" }}>
+          <h2 className="display" style={{ margin: "0 0 0.75rem", fontSize: "1.35rem" }}>
+            Executive summary
+          </h2>
+          <p style={{ margin: 0, lineHeight: 1.6, color: "var(--ink)", whiteSpace: "pre-wrap" }}>{executive.detail}</p>
+        </section>
+      )}
+
+      <section className="panel fade-up-delay" style={{ marginBottom: "1.25rem" }}>
+        <h2 className="display" style={{ margin: "0 0 1rem", fontSize: "1.35rem" }}>
+          Category scores
+        </h2>
         <ScoreRow label="ATS" value={scores.ats} />
         <ScoreRow label="Experience" value={scores.experience} />
         <ScoreRow label="Skills" value={scores.skills} />
@@ -186,11 +251,43 @@ export default function EvaluationPage() {
         <ScoreRow label="Formatting" value={scores.formatting} />
       </section>
 
+      {!!report.sections_detected?.length && (
+        <section className="panel" style={{ marginBottom: "0.5rem" }}>
+          <h2 className="display" style={{ margin: "0 0 0.75rem", fontSize: "1.2rem" }}>
+            Sections detected
+          </h2>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            {report.sections_detected.map((s) => (
+              <span
+                key={s}
+                style={{
+                  border: "1px solid var(--line)",
+                  borderRadius: 999,
+                  padding: "0.3rem 0.7rem",
+                  fontSize: "0.9rem",
+                }}
+              >
+                {s.replaceAll("_", " ")}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <FindingsGroup
+        title="Section-by-section analysis"
+        items={grouped.section_analysis}
+        emptyHint="No section-level notes were returned for this CV."
+      />
       <FindingsGroup title="Strengths" items={grouped.strength} />
       <FindingsGroup title="Issues" items={grouped.issue} />
       <FindingsGroup title="Missing information" items={grouped.missing} />
       <FindingsGroup title="Recommendations" items={grouped.recommendation} />
-      <FindingsGroup title="Suggested improvements" items={grouped.improvement} />
+      <FindingsGroup
+        title="Suggested improvements / rewrites"
+        items={grouped.improvement}
+        emptyHint="No rewrite examples were generated."
+      />
 
       <div style={{ marginTop: "2rem" }}>
         <Link className="btn btn-primary" href="/">
