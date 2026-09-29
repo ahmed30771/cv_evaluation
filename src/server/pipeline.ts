@@ -8,7 +8,10 @@ import { applyChecklistCaps, checklistSignals } from "./scoring";
 function safeError(err: unknown): string {
   const msg = String(err ?? "");
   if (/DATABASE_URL|OPENROUTER_API_KEY|misconfigured/i.test(msg)) return msg.slice(0, 300);
-  if (/OpenRouter|401|402|429/i.test(msg)) {
+  if (/OpenRouter|401|402|429|rate-limited|rate limit/i.test(msg)) {
+    if (/\b429\b|rate-limited|rate limit/i.test(msg)) {
+      return "AI model is rate-limited right now. Please wait about a minute and try again.";
+    }
     return "AI evaluation service is temporarily unavailable. Please try again.";
   }
   if (/extract|text|pdf|docx|mammoth|unpdf/i.test(msg)) return msg.slice(0, 300);

@@ -35,6 +35,12 @@ Return ONLY valid JSON with this shape:
 
 Be specific and actionable. Do not invent employers or degrees that are not in the CV.`;
 
+const FALLBACK_MODELS = [
+  "google/gemma-4-26b-a4b-it:free",
+  "inclusionai/ling-3.0-flash-sante:free",
+  "google/gemma-4-31b-it:free",
+];
+
 function parseJsonContent(content: string): unknown {
   let text = content.trim();
   if (text.startsWith("```")) {
@@ -87,9 +93,50 @@ function normalizeResult(data: Record<string, unknown>): { scores: Scores; findi
   return { scores, findings };
 }
 
+function modelCandidates(primary: string): string[] {
+  return [primary, ...FALLBACK_MODELS.filter((m) => m !== primary)];
+}
+
+async function callModel(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  userContent: string,
+): Promise<{ scores: Scores; findings: Finding[] }> {
+  const resp = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://cv-evaluation.vercel.app",
+      "X-Title": "CV Evaluation Platform",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userContent },
+      ],
+    }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`OpenRouter ${resp.status}: ${text.slice(0, 280)}`);
+  }
+
+  const result = (await resp.json()) as {
+    choices?: { message?: { content?: string | null } }[];
+  };
+  const content = result.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Model returned empty content");
+  return normalizeResult(parseJsonContent(content) as Record<string, unknown>);
+}
+
 export async function evaluateCv(rawText: string): Promise<{ scores: Scores; findings: Finding[] }> {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_MODEL || "google/gemma-4-31b-it:free";
+  const primary = process.env.OPENROUTER_MODEL || "google/gemma-4-26b-a4b-it:free";
   const baseUrl = (process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/$/, "");
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
 
@@ -98,38 +145,24 @@ export async function evaluateCv(rawText: string): Promise<{ scores: Scores; fin
     `<<<CV_START>>>\n${rawText.slice(0, 60000)}\n<<<CV_END>>>`;
 
   let lastError: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const resp = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://cv-evaluation.vercel.app",
-          "X-Title": "CV Evaluation Platform",
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0.2,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userContent },
-          ],
-        }),
-      });
-      if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(`OpenRouter ${resp.status}: ${text.slice(0, 200)}`);
+  for (const model of modelCandidates(primary)) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await callModel(baseUrl, apiKey, model, userContent);
+      } catch (err) {
+        lastError = err;
+        const msg = String(err);
+        // On rate-limit, try next model immediately
+        if (/\b429\b|rate-limited|rate limit/i.test(msg)) break;
       }
-      const result = (await resp.json()) as {
-        choices?: { message?: { content?: string | null } }[];
-      };
-      const content = result.choices?.[0]?.message?.content;
-      if (!content) throw new Error("Model returned empty content");
-      return normalizeResult(parseJsonContent(content) as Record<string, unknown>);
-    } catch (err) {
-      lastError = err;
     }
   }
-  throw new Error(`OpenRouter evaluation failed: ${String(lastError)}`);
+
+  const msg = String(lastError);
+  if (/\b429\b|rate-limited|rate limit/i.test(msg)) {
+    throw new Error(
+      "AI model is rate-limited right now. Please wait about a minute and try again, or set OPENROUTER_MODEL to another free model.",
+    );
+  }
+  throw new Error(`OpenRouter evaluation failed: ${msg}`);
 }
