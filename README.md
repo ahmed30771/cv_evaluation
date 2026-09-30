@@ -1,49 +1,40 @@
 # CV Evaluation Platform
 
-AI-powered CV evaluation: upload PDF/DOCX → extract → score → report.
+Upload a PDF/DOCX CV → extract text → AI score → report.
 
-**Stack:** Next.js (UI + API routes) · Neon PostgreSQL · OpenRouter  
-**Deploy:** One Vercel project
-
-## Why you saw Request failed (404)
-
-Python FastAPI under `/api` does **not** run inside a Next.js Vercel project.  
-API now lives in Next.js Route Handlers: `/api/v1/evaluations`.
+**Stack:** Next.js (App Router + API routes) · Neon PostgreSQL · OpenRouter  
+**Deploy:** Single Vercel project (UI and API together)
 
 ## Local setup
 
 ```bash
 npm install
-# copy .env.example → .env.local and fill secrets
+cp .env.example .env.local   # fill secrets
 npm run dev
 ```
 
-Open http://localhost:3000  
-Health: http://localhost:3000/api/health
+App: http://localhost:3000 · Health: `/api/health`
 
-Optional: `backend/` FastAPI still exists for local Python experiments, but the product path is Next.js API.
+## Environment
 
-## Deploy on Vercel (1 project)
+| Variable | Required | Notes |
+|----------|----------|--------|
+| `DATABASE_URL` | Yes | Neon connection string |
+| `OPENROUTER_API_KEY` | Yes | OpenRouter key |
+| `OPENROUTER_MODEL` | Yes | e.g. `google/gemma-4-26b-a4b-it:free` |
+| `OPENROUTER_BASE_URL` | Yes | `https://openrouter.ai/api/v1` |
+| `MAX_UPLOAD_BYTES` | No | Default `5242880` (5 MB) |
 
-1. Push to GitHub  
-2. Import repo on Vercel — **Root Directory empty**  
-3. Add env vars (Production + Preview):
+Do not set `NEXT_PUBLIC_API_BASE_URL` — the app calls same-origin `/api/v1/...`.
 
-| Name | Example |
-|------|---------|
-| `DATABASE_URL` | Neon URL |
-| `OPENROUTER_API_KEY` | `sk-or-v1-...` |
-| `OPENROUTER_MODEL` | `google/gemma-4-31b-it:free` |
-| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` |
-| `MAX_UPLOAD_BYTES` | `5242880` |
+## Vercel
 
-Do **not** set `NEXT_PUBLIC_API_BASE_URL`.
+1. Import the repo (root directory empty).
+2. Add the env vars above for Production (and Preview if needed).
+3. Deploy and open `/` + `/api/health`.
 
-4. Deploy → test `/` and `/api/health`  
-5. Upload a CV again
-
-`maxDuration: 60` is set for API routes (Pro recommended for LLM time).
+API routes use `maxDuration: 60` (Pro plan recommended for LLM latency).
 
 ## Docs
 
-See [`docs/README.md`](docs/README.md).
+Product and tech docs: [`docs/README.md`](docs/README.md).
