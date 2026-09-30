@@ -289,9 +289,15 @@ export default function EvaluationPage() {
         emptyHint="No rewrite examples were generated."
       />
 
-      <div style={{ marginTop: "2rem" }}>
-        <Link className="btn btn-primary" href="/">
-          Evaluate another CV
+      <div style={{ marginTop: "2rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+        <Link className="btn btn-primary" href={`/build/${id}`}>
+          Fix my CV / Open builder
+        </Link>
+        <Link className="btn btn-ghost" href="/">
+          Home
+        </Link>
+        <Link className="btn btn-ghost" href="/evaluate">
+          Evaluate another
         </Link>
       </div>
     </main>

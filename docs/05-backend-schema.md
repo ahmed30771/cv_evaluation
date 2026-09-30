@@ -15,6 +15,7 @@ erDiagram
   evaluations ||--o| cv_extractions : has
   evaluations ||--o| evaluation_scores : has
   evaluations ||--o{ evaluation_findings : has
+  evaluations ||--o| cv_rewrites : has
 
   evaluations {
     uuid id PK
@@ -57,6 +58,14 @@ erDiagram
     text detail
     text severity
     integer sort_order
+  }
+
+  cv_rewrites {
+    uuid id PK
+    uuid evaluation_id FK
+    jsonb content
+    text template_id
+    timestamptz updated_at
   }
 ```
 
@@ -193,6 +202,22 @@ CHECK (type IN (
 CREATE INDEX idx_evaluation_findings_evaluation_id ON evaluation_findings (evaluation_id);
 CREATE INDEX idx_evaluation_findings_type ON evaluation_findings (evaluation_id, type);
 ```
+
+---
+
+### 2.5 `cv_rewrites`
+
+One AI-generated structured resume per evaluation (used for template preview + DOCX/PDF export).
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|--------|
+| `id` | `UUID` | PK | |
+| `evaluation_id` | `UUID` | NOT NULL UNIQUE, FK → `evaluations(id)` ON DELETE CASCADE | |
+| `content` | `JSONB` | NOT NULL | `StructuredCv` (personal, summary, skills, experience, education, projects, certifications) |
+| `template_id` | `TEXT` | NOT NULL, default `classic` | `classic` \| `compact` \| `sidebar` \| `split` |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` | |
+
+**APIs:** `POST/GET/PUT /api/v1/evaluations/:id/rewrite`, `GET /api/v1/evaluations/:id/export?format=pdf|docx&template=...`
 
 ---
 

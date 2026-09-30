@@ -1,9 +1,9 @@
-# CV Evaluation Platform
+# Bluexech Resume
 
-Upload a PDF/DOCX CV → extract text → AI score → report.
+Build a resume with guided onboarding, templates, live editor, and PDF/DOCX export. Optionally score an existing CV with AI.
 
 **Stack:** Next.js (App Router + API routes) · Neon PostgreSQL · OpenRouter  
-**Deploy:** Single Vercel project (UI and API together)
+**Deploy:** Single Vercel project
 
 ## Local setup
 
@@ -15,6 +15,15 @@ npm run dev
 
 App: http://localhost:3000 · Health: `/api/health`
 
+## Product flows
+
+| Path | What it does |
+|------|----------------|
+| `/build` | Onboarding wizard → template gallery → editor |
+| `/build/[id]` | Live edit + preview + PDF/DOCX |
+| `/evaluate` | Upload CV for AI scores |
+| `/evaluations/[id]` | Score report → open builder |
+
 ## Environment
 
 | Variable | Required | Notes |
@@ -25,16 +34,14 @@ App: http://localhost:3000 · Health: `/api/health`
 | `OPENROUTER_BASE_URL` | Yes | `https://openrouter.ai/api/v1` |
 | `MAX_UPLOAD_BYTES` | No | Default `5242880` (5 MB) |
 
-Do not set `NEXT_PUBLIC_API_BASE_URL` — the app calls same-origin `/api/v1/...`.
+Do not set `NEXT_PUBLIC_API_BASE_URL`.
 
 ## Vercel
 
 1. Import the repo (root directory empty).
-2. Add the env vars above for Production (and Preview if needed).
+2. Add the env vars above.
 3. Deploy and open `/` + `/api/health`.
-
-API routes use `maxDuration: 60` (Pro plan recommended for LLM latency).
 
 ## Docs
 
-Product and tech docs: [`docs/README.md`](docs/README.md).
+[`docs/README.md`](docs/README.md)

@@ -15,8 +15,9 @@ const sans = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: "AI-Powered CV Evaluation",
-  description: "Upload your CV and get structured scores, ATS insights, and actionable recommendations.",
+  title: "Bluexech Resume — Build & evaluate CVs",
+  description:
+    "Build an ATS-friendly resume with live templates and PDF/DOCX export, or score an existing CV with AI.",
 };
 
 export default function RootLayout({

@@ -133,6 +133,24 @@ This plan sequences delivery for the MVP priority path: **Upload CV → Extract 
 
 ---
 
+### Phase 5b — Generate resume (rewrite + templates + export)
+
+**Work**
+
+- `cv_rewrites` table + structured CV model
+- OpenRouter `rewriteCv` from extraction + findings
+- Templates: Classic, Compact (single-column ATS), Sidebar, Split (multi-column)
+- Preview UI at `/evaluations/[id]/rewrite`
+- Export DOCX (`docx`) and PDF (`@react-pdf/renderer`)
+
+**Acceptance**
+
+- [ ] Report CTA opens rewrite flow
+- [ ] User can switch templates and preview
+- [ ] Download PDF and DOCX succeed for all 4 templates
+
+---
+
 ### Phase 6 — Hardening
 
 **Work**
@@ -158,7 +176,7 @@ This plan sequences delivery for the MVP priority path: **Upload CV → Extract 
 4. Admin analytics dashboard  
 5. Private object storage + retention policy  
 6. Optional OCR for scanned PDFs  
-7. Downloadable PDF report export  
+7. Downloadable PDF **evaluation report** export (resume DOCX/PDF already shipped)  
 
 ---
 

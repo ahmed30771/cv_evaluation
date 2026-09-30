@@ -74,4 +74,20 @@ export async function ensureSchema() {
       sort_order INTEGER NOT NULL DEFAULT 0
     )
   `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS cv_rewrites (
+      id UUID PRIMARY KEY,
+      evaluation_id UUID NOT NULL UNIQUE REFERENCES evaluations(id) ON DELETE CASCADE,
+      content JSONB NOT NULL DEFAULT '{}'::jsonb,
+      template_id TEXT NOT NULL DEFAULT 'classic',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+
+  try {
+    await sql`ALTER TABLE cv_rewrites ADD COLUMN IF NOT EXISTS meta JSONB NOT NULL DEFAULT '{}'::jsonb`;
+  } catch {
+    /* ignore */
+  }
 }

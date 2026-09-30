@@ -11,13 +11,13 @@
 
 | Feature | Description | Primary screen |
 |---------|-------------|----------------|
-| Landing | Brand, value prop, CTA, format notice | Landing |
-| Upload | Drag-drop / file picker, validation | Upload (or Landing) |
-| Processing | Status while extract + evaluate run | Processing / Evaluation detail |
-| Scores | Overall + ATS / Experience / Skills / Content / Formatting (+ qualitative bands) | Report |
-| Detailed report | Executive summary, section analysis, Strengths, Issues, Missing, Recommendations, Improvements | Report |
-| Sections detected | Chips for parsed CV sections | Report |
-| Retry | Return to upload after failure or after viewing report | Error / Report → Landing |
+| Home | Build vs Evaluate CTAs | `/` |
+| Onboarding | Existing resume?, upload/blank, role, ATS vs visual | `/build` |
+| Template gallery | Classic, Compact, Sidebar, Split | `/build` step 5 |
+| Live editor | Form + live preview + save + export | `/build/[id]` |
+| Evaluate | Upload for AI scores | `/evaluate` |
+| Report | Scores + findings → open builder | `/evaluations/[id]` |
+| Export | PDF / DOCX | Builder download actions |
 
 ### Phase 2 features (documented, not navigable in MVP)
 
@@ -34,10 +34,11 @@
 
 | Screen ID | Route (suggested) | Purpose |
 |-----------|-------------------|---------|
-| Landing | `/` | Hero + explanation + primary CTA |
-| Upload | `/` (same page section) or `/upload` | File dropzone + validate + submit |
-| Processing | `/evaluations/[id]` | Show progress for statuses before terminal |
-| Report | `/evaluations/[id]` | Scores + findings when `completed` |
+| Landing | `/` | Hero + Build / Evaluate |
+| Build wizard | `/build` | Onboarding + template gallery |
+| Editor | `/build/[id]` | Live resume editor |
+| Evaluate | `/evaluate` | CV upload for scoring |
+| Processing / Report | `/evaluations/[id]` | Scores + findings when `completed` |
 | Error | `/evaluations/[id]` | Failed state + retry CTA |
 
 **Navigation rule (MVP):** No authentication gates. Any visitor can start an evaluation. Report access is via evaluation UUID in the URL.

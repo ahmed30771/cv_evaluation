@@ -11,7 +11,7 @@
 
 Help job seekers improve their CVs with fast, structured, AI-powered feedback. A user uploads a CV (PDF/DOCX), the system extracts content, evaluates it against a predefined rubric, and returns consistent scores plus actionable recommendations.
 
-**Headline promise:** “AI-Powered CV Evaluation”
+**Headline promise:** “AI-Powered CV Evaluation” — evaluate, then generate a fixed ATS-friendly resume.
 
 ---
 
@@ -53,6 +53,8 @@ Help job seekers improve their CVs with fast, structured, AI-powered feedback. A
 5. **Structured scores** — Overall score (0–100) plus category scores: ATS, Experience, Skills, Content, Formatting.
 6. **Detailed report** — Strengths, Issues, Missing information, Recommendations, Suggested improvements (with concrete rewrite examples where useful).
 7. **Results retrieval** — User can view the report for a completed evaluation (via evaluation ID).
+8. **AI CV rewrite** — From the report, generate a structured improved resume using evaluation findings (no invented employers/dates).
+9. **Templates + export** — Choose among Classic / Compact (single-column, ATS recommended) and Sidebar / Split (multi-column, visual); download DOCX or PDF.
 
 ### 4.2 Out of scope (MVP)
 
@@ -62,7 +64,7 @@ Help job seekers improve their CVs with fast, structured, AI-powered feedback. A
 | Evaluation history list | Deferred to Phase 2 |
 | Job Description matching | Deferred to Phase 2 |
 | Admin / analytics dashboard | Deferred to Phase 2 |
-| Downloadable PDF report export | Nice-to-have; not MVP-required |
+| Downloadable PDF **evaluation report** export | Nice-to-have; not required (resume PDF/DOCX export is in scope) |
 | Multi-language CV evaluation | English-first for MVP |
 | Real-time collaborative editing of CV | Out of product scope |
 

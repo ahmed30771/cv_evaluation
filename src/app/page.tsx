@@ -1,44 +1,75 @@
-import { UploadDropzone } from "@/components/UploadDropzone";
+import Link from "next/link";
+import { BuilderChrome } from "@/components/BuilderChrome";
 
 export default function HomePage() {
   return (
-    <main className="container" style={{ paddingTop: "4.5rem", paddingBottom: "4rem" }}>
-      <header className="fade-up" style={{ maxWidth: "38rem", marginBottom: "2.25rem" }}>
-        <p
-          style={{
-            margin: 0,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            fontSize: "0.8rem",
-            fontWeight: 700,
-            color: "var(--brand)",
-          }}
-        >
-          CV Evaluation Platform
-        </p>
-        <h1
-          className="display"
-          style={{
-            margin: "0.65rem 0 0.85rem",
-            fontSize: "clamp(2.4rem, 6vw, 3.6rem)",
-            lineHeight: 1.05,
-            fontWeight: 650,
-            color: "var(--brand-deep)",
-          }}
-        >
-          AI-Powered CV Evaluation
-        </h1>
-        <p style={{ margin: 0, fontSize: "1.15rem", color: "var(--muted)", lineHeight: 1.55 }}>
-          Upload your CV and get structured scores, ATS insights, and clear recommendations you can act on.
-        </p>
-      </header>
+    <BuilderChrome
+      actions={
+        <>
+          <Link href="/#evaluate" className="btn btn-ghost" style={{ padding: "0.45rem 0.9rem", fontSize: "0.92rem" }}>
+            Score a CV
+          </Link>
+          <Link href="/build" className="btn btn-primary" style={{ padding: "0.45rem 0.9rem", fontSize: "0.92rem" }}>
+            Build resume
+          </Link>
+        </>
+      }
+    >
+      <main className="container" style={{ paddingTop: "3.5rem", paddingBottom: "4rem" }}>
+        <section className="fade-up home-hero">
+          <p className="home-eyebrow">Bluexech Resume</p>
+          <h1 className="display home-title">Build a stand-out resume. Pass ATS when it matters.</h1>
+          <p className="home-lead">
+            Guided builder with polished templates, live preview, and DOCX/PDF export — plus optional AI scoring if you
+            already have a CV.
+          </p>
+          <div className="home-cta-row">
+            <Link href="/build" className="btn btn-primary">
+              Start building
+            </Link>
+            <a href="#evaluate" className="btn btn-ghost">
+              Score an existing CV
+            </a>
+          </div>
+        </section>
 
-      <section id="upload" aria-label="Upload CV">
-        <UploadDropzone />
-        <p style={{ marginTop: "1rem", color: "var(--muted)", fontSize: "0.95rem" }}>
-          Supported formats: PDF and DOCX
-        </p>
-      </section>
-    </main>
+        <section className="home-features fade-up-delay" aria-label="What you get">
+          <article className="panel home-feature">
+            <h2 className="display" style={{ margin: "0 0 0.4rem", fontSize: "1.15rem" }}>
+              Templates
+            </h2>
+            <p style={{ margin: 0, color: "var(--muted)" }}>
+              Classic and Compact for ATS. Sidebar and Split when you want a stronger visual layout.
+            </p>
+          </article>
+          <article className="panel home-feature">
+            <h2 className="display" style={{ margin: "0 0 0.4rem", fontSize: "1.15rem" }}>
+              Live editor
+            </h2>
+            <p style={{ margin: 0, color: "var(--muted)" }}>
+              Edit sections on the left and see the resume update instantly on the right.
+            </p>
+          </article>
+          <article className="panel home-feature">
+            <h2 className="display" style={{ margin: "0 0 0.4rem", fontSize: "1.15rem" }}>
+              Export
+            </h2>
+            <p style={{ margin: 0, color: "var(--muted)" }}>Download PDF or DOCX when you are ready to apply.</p>
+          </article>
+        </section>
+
+        <section id="evaluate" className="panel fade-up" style={{ marginTop: "2.5rem" }}>
+          <h2 className="display" style={{ margin: "0 0 0.5rem", fontSize: "1.35rem" }}>
+            Already have a CV?
+          </h2>
+          <p style={{ margin: "0 0 1rem", color: "var(--muted)" }}>
+            Upload for AI scores and findings, then jump into the builder to fix and export.
+          </p>
+          <Link href="/evaluate" className="btn btn-primary">
+            Evaluate CV
+          </Link>
+        </section>
+      </main>
+    </BuilderChrome>
   );
 }
