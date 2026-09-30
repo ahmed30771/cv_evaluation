@@ -269,7 +269,7 @@ export function DirectEditCvPreview({
 
   const missingSections = availableSectionTemplates(cv);
 
-  const activate = (key: string, _target: SectionActionTarget) => {
+  const activate = (key: string) => {
     setActiveKey(key);
     setAiErr(null);
   };

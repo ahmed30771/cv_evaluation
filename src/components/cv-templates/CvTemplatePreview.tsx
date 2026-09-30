@@ -97,7 +97,6 @@ function SkillChips({ skills, accent, soft }: { skills: string[]; accent: string
 function JobBlock({
   job,
   accent,
-  dateRight,
 }: {
   job: StructuredCv["experience"][number];
   accent?: string;

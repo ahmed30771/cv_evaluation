@@ -163,7 +163,7 @@ export function placeSectionRelative(
 ): StructuredCv {
   if (draggedId === targetId) return cv;
   const targetCol = resolveSectionColumn(cv, targetId, split);
-  let next = moveSectionColumn(cv, draggedId, targetCol, split);
+  const next = moveSectionColumn(cv, draggedId, targetCol, split);
   const { left, right } = presentByColumn(next, split);
   const lane = targetCol === "right" ? [...right] : [...left];
   const without = lane.filter((id) => id !== draggedId);
