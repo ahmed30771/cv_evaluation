@@ -18,11 +18,13 @@ export function EditorLeftRail({
   onAiRewrite: () => void;
   aiBusy: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   useEffect(() => {
     try {
-      setExpanded(localStorage.getItem(STORAGE_KEY) === "1");
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved === "0") setExpanded(false);
+      else if (saved === "1") setExpanded(true);
     } catch {
       /* ignore */
     }

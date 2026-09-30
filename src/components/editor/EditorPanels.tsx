@@ -5,6 +5,7 @@ import { TemplateThumb } from "@/components/cv-templates/CvTemplatePreview";
 import type { Finding, Report, StructuredCv, TemplateId } from "@/lib/api";
 import type { BodySectionId } from "@/lib/cv-types";
 import { TEMPLATES } from "@/lib/templates";
+import { TEMPLATE_PREVIEW_SAMPLE } from "@/lib/template-preview-sample";
 import { scoreToGrade } from "@/lib/score-grade";
 import { presentByColumn, sectionLabel } from "@/lib/section-order";
 
@@ -210,7 +211,6 @@ export function TailorPanel({
 }
 
 export function TemplatesPanel({
-  cv,
   templateId,
   onPick,
   onClose,
@@ -227,7 +227,7 @@ export function TemplatesPanel({
         {TEMPLATES.map((t) => (
           <TemplateThumb
             key={t.id}
-            cv={cv}
+            cv={TEMPLATE_PREVIEW_SAMPLE}
             templateId={t.id}
             label={t.label}
             badge={t.badge}

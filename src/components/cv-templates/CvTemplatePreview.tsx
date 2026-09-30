@@ -899,6 +899,7 @@ export function TemplateThumb({
   cv,
   templateId,
   active,
+  disabled,
   onClick,
   label,
   badge,
@@ -906,17 +907,25 @@ export function TemplateThumb({
   cv: StructuredCv;
   templateId: TemplateId;
   active?: boolean;
+  disabled?: boolean;
   onClick?: () => void;
   label: string;
   badge?: string;
 }) {
   const theme = getTheme(templateId);
   return (
-    <button type="button" className={`template-mini ${active ? "is-active" : ""}`} onClick={onClick} aria-pressed={active}>
+    <button
+      type="button"
+      className={`template-mini ${active ? "is-active" : ""} ${disabled && !active ? "is-dimmed" : ""}`}
+      onClick={onClick}
+      aria-pressed={active}
+      disabled={disabled}
+    >
       <div className="template-mini-frame">
         <div className="template-mini-scale">
           <CvTemplatePreview cv={cv} templateId={templateId} />
         </div>
+        {active ? <span className="template-mini-selected">Selected</span> : null}
       </div>
       <div className="template-mini-meta">
         <span className="template-mini-swatches" aria-hidden>

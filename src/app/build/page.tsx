@@ -11,39 +11,12 @@ import {
   generateRewrite,
   getEvaluation,
   updateRewrite,
-  type StructuredCv,
   type TemplateId,
 } from "@/lib/api";
 import { TEMPLATES } from "@/lib/templates";
+import { TEMPLATE_PREVIEW_SAMPLE } from "@/lib/template-preview-sample";
 
 type Pref = "ats" | "visual";
-
-const SAMPLE: StructuredCv = {
-  personal: {
-    fullName: "Alex Morgan",
-    email: "alex@example.com",
-    phone: "+1 555 0100",
-    location: "Remote",
-    links: ["linkedin.com/in/alex"],
-  },
-  summary: "Product-minded professional with a track record of shipping clear, measurable outcomes.",
-  skills: ["Communication", "Problem solving", "SQL", "Figma"],
-  experience: [
-    {
-      company: "Northwind",
-      title: "Role title",
-      start: "2022",
-      end: "Present",
-      bullets: ["Led initiatives that improved delivery speed.", "Partnered with stakeholders to ship features."],
-    },
-  ],
-  education: [{ school: "State University", degree: "B.S. Example", year: "2021" }],
-  projects: [],
-  certifications: [],
-  languages: [],
-  awards: [],
-  interests: [],
-};
 
 function StepDots({ step, total }: { step: number; total: number }) {
   return (
@@ -71,8 +44,8 @@ export default function BuildWizardPage() {
   const [role, setRole] = useState("");
   const [preference, setPreference] = useState<Pref>("ats");
   const [resumeId, setResumeId] = useState<string | null>(null);
-  const [content, setContent] = useState<StructuredCv>(SAMPLE);
   const [busy, setBusy] = useState(false);
+  const [pickingId, setPickingId] = useState<TemplateId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
@@ -105,7 +78,6 @@ export default function BuildWizardPage() {
       template_id: preference === "visual" ? "sidebar" : "classic",
     });
     setResumeId(id);
-    setContent(rewrite.content);
     return id;
   }, [file, preference, role]);
 
@@ -117,7 +89,6 @@ export default function BuildWizardPage() {
       template_id: preference === "visual" ? "sidebar" : "classic",
     });
     setResumeId(row.id);
-    setContent(row.content);
     return row.id;
   }, [preference, role]);
 
@@ -137,15 +108,20 @@ export default function BuildWizardPage() {
   }
 
   async function pickTemplate(templateId: TemplateId) {
-    if (!resumeId) return;
+    if (!resumeId || busy) return;
+    const meta = TEMPLATES.find((t) => t.id === templateId);
+    setPickingId(templateId);
     setBusy(true);
     setError(null);
+    setStatusMsg(`Opening ${meta?.label || "template"}…`);
     try {
       await updateRewrite(resumeId, { template_id: templateId });
       router.push(`/build/${resumeId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save template");
       setBusy(false);
+      setPickingId(null);
+      setStatusMsg(null);
     }
   }
 
@@ -285,7 +261,7 @@ export default function BuildWizardPage() {
         )}
 
         {step === 5 && (
-          <section className="fade-up">
+          <section className={`fade-up ${busy ? "is-entering-template" : ""}`}>
             <h1 className="display wizard-title" style={{ textAlign: "center" }}>
               Pick a template
             </h1>
@@ -296,15 +272,29 @@ export default function BuildWizardPage() {
               {allTemplatesOrdered.map((t) => (
                 <TemplateThumb
                   key={t.id}
-                  cv={content}
+                  cv={TEMPLATE_PREVIEW_SAMPLE}
                   templateId={t.id}
                   label={t.label}
                   badge={t.badge}
+                  active={pickingId === t.id}
+                  disabled={busy}
                   onClick={() => void pickTemplate(t.id)}
                 />
               ))}
             </div>
           </section>
+        )}
+
+        {busy && pickingId && (
+          <div className="template-enter-overlay" role="status" aria-live="polite">
+            <div className="template-enter-card">
+              <div className="template-enter-spinner" aria-hidden />
+              <strong>Opening template</strong>
+              <p>
+                {TEMPLATES.find((t) => t.id === pickingId)?.label || "Selected design"} — setting up your editor…
+              </p>
+            </div>
+          </div>
         )}
       </main>
     </BuilderChrome>
