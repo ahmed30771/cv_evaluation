@@ -15,21 +15,21 @@ export default async function StudioHomePage() {
       </div>
 
       <div className="studio-home-grid">
-        <Link href={studioPath("/build", host)} className="studio-home-card sq-rise">
+        <Link href={studioPath("/evaluate", host)} className="studio-home-card sq-rise">
           <span className="studio-home-card-index" aria-hidden>
             01
-          </span>
-          <strong>Build a resume</strong>
-          <span>Templates, live editing, AI rewrite, PDF and DOCX export.</span>
-          <span className="studio-home-card-cta">Open builder</span>
-        </Link>
-        <Link href={studioPath("/evaluate", host)} className="studio-home-card studio-home-card--secondary sq-rise-delay">
-          <span className="studio-home-card-index" aria-hidden>
-            02
           </span>
           <strong>Score a CV</strong>
           <span>ATS and content scores with findings you can fix in the builder.</span>
           <span className="studio-home-card-cta">Upload &amp; score</span>
+        </Link>
+        <Link href={studioPath("/build", host)} className="studio-home-card studio-home-card--secondary sq-rise-delay">
+          <span className="studio-home-card-index" aria-hidden>
+            02
+          </span>
+          <strong>Build a resume</strong>
+          <span>Templates, live editing, AI rewrite, PDF and DOCX export.</span>
+          <span className="studio-home-card-cta">Open builder</span>
         </Link>
       </div>
 

@@ -1,0 +1,14 @@
+---
+description: Never attribute commits to Cursor/CursorAgent
+alwaysApply: true
+---
+
+# Git commits — author attribution
+
+- Commits must show **only the user's git identity** (Muhammad Ahmed).
+- **Never** add, keep, or allow these in any commit message or metadata:
+  - `Co-authored-by: Cursor <cursoragent@cursor.com>`
+  - `Co-authored-by: CursorAgent`
+  - Any Cursor / CursorAgent / AI co-author trailer or collaborator credit
+- After every `git commit` / `git commit --amend`, run `git log -1 --format=full` and if a Cursor co-author trailer is present, rewrite that commit to remove it before pushing (use `git commit-tree` / equivalent so hooks cannot re-inject it).
+- Do not force-push to `main` unless the user explicitly asks to fix attribution or history.
