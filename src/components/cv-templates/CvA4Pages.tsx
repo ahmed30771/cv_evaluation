@@ -37,7 +37,7 @@ function computeBreakPads(root: HTMLElement): Record<string, number> {
       })
       .join("\n");
 
-    let styleEl = root.ownerDocument.querySelector<HTMLStyleElement>("[data-cv-a4-breaks]");
+    const styleEl = root.ownerDocument.querySelector<HTMLStyleElement>("[data-cv-a4-breaks]");
     if (styleEl) styleEl.textContent = rules;
 
     let changed = false;

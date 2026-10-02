@@ -343,12 +343,20 @@ function ClassicDoc({
       <Page size="A4" style={s.page}>
         {photoMode === "portrait" ? (
           <View style={s.headerRow}>
-            {photo ? <Image src={photo} style={s.photo} /> : null}
+            {photo ? (
+              // react-pdf Image has no alt; photo is decorative in layout
+              // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf/renderer Image
+              <Image src={photo} style={s.photo} />
+            ) : null}
             <View style={s.headerTextCol}>{identity}</View>
           </View>
         ) : photoMode === "medallion" ? (
           <View style={s.headerCenter}>
-            {photo ? <Image src={photo} style={s.photo} /> : null}
+            {photo ? (
+              // react-pdf Image has no alt; photo is decorative in layout
+              // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf/renderer Image
+              <Image src={photo} style={s.photo} />
+            ) : null}
             {identity}
           </View>
         ) : (
@@ -519,7 +527,10 @@ function BannerDoc({
             <Text style={s.name}>{exportPlain(cv.personal.fullName) || "Resume"}</Text>
             <Text style={s.contact}>{contactLine(cv)}</Text>
           </View>
-          {photo ? <Image src={photo} style={s.photo} /> : null}
+          {photo ? (
+            // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf/renderer Image
+            <Image src={photo} style={s.photo} />
+          ) : null}
         </View>
         <View style={s.bodyWrap}>
           <View style={s.col}>

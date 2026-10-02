@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import {
   draftToRawText,
   getOrCreateDraft,
-  normalizeDraftSections,
   overlaysToRawText,
   saveDraft,
   type DraftSections,
