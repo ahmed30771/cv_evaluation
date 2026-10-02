@@ -586,15 +586,16 @@ export function DirectEditCvPreview({
   const deletePageContent = (refs: PageContentRef[]) => {
     if (!refs.length) return;
     onPatch((prev) => {
-      const dropExp = new Set(
-        refs.filter((r) => r.kind === "entry" && r.sectionId === "experience").map((r) => r.index),
-      );
-      const dropEdu = new Set(
-        refs.filter((r) => r.kind === "entry" && r.sectionId === "education").map((r) => r.index),
-      );
-      const dropProj = new Set(
-        refs.filter((r) => r.kind === "entry" && r.sectionId === "projects").map((r) => r.index),
-      );
+      const entryIndexes = (sectionId: string) =>
+        refs
+          .filter(
+            (r): r is Extract<PageContentRef, { kind: "entry" }> =>
+              r.kind === "entry" && r.sectionId === sectionId,
+          )
+          .map((r) => r.index);
+      const dropExp = new Set(entryIndexes("experience"));
+      const dropEdu = new Set(entryIndexes("education"));
+      const dropProj = new Set(entryIndexes("projects"));
       const dropSections = new Set(
         refs.filter((r) => r.kind === "section").map((r) => r.sectionId),
       );
@@ -877,7 +878,7 @@ export function DirectEditCvPreview({
   };
 
   useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
+    const onDoc = (e: globalThis.MouseEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest?.(".cv-section-shell")) return;
       if (t.closest?.(".section-picker")) return;
