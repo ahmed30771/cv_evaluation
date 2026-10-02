@@ -1,9 +1,40 @@
 /**
- * Single Vercel project, two hosts:
- * - Main domain → marketing site (/www via middleware)
- * - app.* subdomain → CV studio (/studio via middleware)
- * Local path mode: NEXT_PUBLIC_APP_URL=http://localhost:3000/studio
+ * Single Vercel project, two modes:
+ * - Path mode (default): marketing `/` + studio `/studio` on the same host
+ * - Dual host: main domain + `app.*` subdomain (set NEXT_PUBLIC_* + APP_HOST)
+ *
+ * Never bake localhost into production links. On Vercel, leave NEXT_PUBLIC_APP_URL
+ * unset for path mode, or set real production URLs.
  */
+
+function stripTrailingSlash(url: string) {
+  return url.replace(/\/$/, "");
+}
+
+function isLocalhostUrl(url: string) {
+  return /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?/i.test(url);
+}
+
+function isProductionRuntime() {
+  return process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
+}
+
+/** Env URL only if it is usable on this runtime (ignore localhost on Vercel/prod). */
+function readPublicUrl(value: string | undefined): string {
+  const v = stripTrailingSlash((value || "").trim());
+  if (!v) return "";
+  if (isLocalhostUrl(v) && isProductionRuntime()) return "";
+  if (typeof window !== "undefined" && isLocalhostUrl(v) && !isLocalhostUrl(window.location.origin)) {
+    return "";
+  }
+  return v;
+}
+
+function vercelDeploymentOrigin(): string {
+  const raw = (process.env.VERCEL_URL || "").replace(/^https?:\/\//, "").replace(/\/$/, "");
+  if (!raw) return "";
+  return `https://${raw}`;
+}
 
 export function getHostFromHeaders(hostHeader: string | null): string {
   return (hostHeader || "").split(",")[0].trim().toLowerCase().split(":")[0];
@@ -18,22 +49,33 @@ export function isAppHost(host: string): boolean {
   return false;
 }
 
-/** Public origin for the CV product (subdomain or /studio path). */
+/** True when studio lives under `/studio` on the same host (not a separate app subdomain). */
+export function isStudioPathMode(origin = getAppOrigin()): boolean {
+  return !origin || origin.endsWith("/studio") || isLocalhostUrl(origin);
+}
+
+/** Public origin for the CV product (subdomain or …/studio path). */
 export function getAppOrigin(): string {
+  const fromEnv = readPublicUrl(process.env.NEXT_PUBLIC_APP_URL);
+
   if (typeof window !== "undefined") {
-    const fromEnv = process.env.NEXT_PUBLIC_APP_URL;
-    if (fromEnv) return fromEnv.replace(/\/$/, "");
+    if (fromEnv) return fromEnv;
     if (window.location.hostname.startsWith("app.")) return window.location.origin;
     return `${window.location.origin}/studio`;
   }
-  return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000/studio").replace(/\/$/, "");
+
+  if (fromEnv) return fromEnv;
+  const deploy = vercelDeploymentOrigin();
+  if (deploy) return `${deploy}/studio`;
+  return "http://localhost:3000/studio";
 }
 
 /** Public origin for the marketing site. */
 export function getMainOrigin(): string {
+  const fromEnv = readPublicUrl(process.env.NEXT_PUBLIC_MAIN_URL);
+
   if (typeof window !== "undefined") {
-    const fromEnv = process.env.NEXT_PUBLIC_MAIN_URL;
-    if (fromEnv) return fromEnv.replace(/\/$/, "");
+    if (fromEnv) return fromEnv;
     if (window.location.hostname.startsWith("app.")) {
       return `${window.location.protocol}//${window.location.hostname.replace(/^app\./, "")}${
         window.location.port ? `:${window.location.port}` : ""
@@ -41,7 +83,11 @@ export function getMainOrigin(): string {
     }
     return window.location.origin;
   }
-  return (process.env.NEXT_PUBLIC_MAIN_URL || "http://localhost:3000").replace(/\/$/, "");
+
+  if (fromEnv) return fromEnv;
+  const deploy = vercelDeploymentOrigin();
+  if (deploy) return deploy;
+  return "http://localhost:3000";
 }
 
 /** Path inside the studio app (host-aware: bare on app.* , prefixed on /studio). */
@@ -50,12 +96,14 @@ export function studioPath(path = "/", hostHint?: string | null): string {
   if (hostHint && isAppHost(hostHint)) {
     return p === "" ? "/" : p;
   }
+
+  const appUrl = readPublicUrl(process.env.NEXT_PUBLIC_APP_URL);
   const usePrefix =
     (typeof window !== "undefined" && window.location.pathname.startsWith("/studio")) ||
-    (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "").endsWith("/studio") ||
-    (!hostHint && process.env.NODE_ENV !== "production");
+    appUrl.endsWith("/studio") ||
+    (!appUrl && !isAppHost(hostHint || "")) ||
+    (!hostHint && !isProductionRuntime());
 
-  // Default local/dev to /studio prefix unless clearly on an app host.
   if (usePrefix && !(hostHint && isAppHost(hostHint))) {
     if (p === "/" || p === "") return "/studio";
     return `/studio${p}`;
@@ -63,19 +111,28 @@ export function studioPath(path = "/", hostHint?: string | null): string {
   return p === "" ? "/" : p;
 }
 
-/** Build a URL into the studio app. */
+/** Link into the studio app — relative in path mode so any Vercel domain works. */
 export function appHref(path = "/"): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   const origin = getAppOrigin();
-  if (origin.endsWith("/studio")) {
-    if (p === "/" || p === "") return origin;
-    return `${origin}${p}`;
+
+  if (isStudioPathMode(origin)) {
+    if (p === "/" || p === "") return "/studio";
+    return `/studio${p}`;
   }
+
   return `${origin}${p === "/" ? "" : p}`;
 }
 
+/** Link into the marketing site — relative when same host / path mode. */
 export function mainHref(path = "/"): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   const origin = getMainOrigin();
+  const appOrigin = getAppOrigin();
+
+  if (isStudioPathMode(appOrigin) || isLocalhostUrl(origin)) {
+    return p === "/" ? "/" : p;
+  }
+
   return `${origin}${p === "/" ? "" : p}`;
 }

@@ -26,6 +26,12 @@ export function middleware(req: NextRequest) {
   const host = getHostFromHeaders(req.headers.get("host"));
   const appHost = isAppHost(host);
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const appUrlUsable =
+    Boolean(appUrl) &&
+    !(
+      /localhost|127\.0\.0\.1/i.test(appUrl) &&
+      (process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL))
+    );
 
   // App subdomain → rewrite into /studio/*
   if (appHost) {
@@ -36,10 +42,10 @@ export function middleware(req: NextRequest) {
 
   // Main domain: bare product paths → app URL (subdomain or /studio path)
   if (isBareStudioPath(pathname)) {
-    if (appUrl.endsWith("/studio")) {
+    if (appUrlUsable && appUrl.endsWith("/studio")) {
       return NextResponse.redirect(new URL(`/studio${pathname}`, req.url));
     }
-    if (appUrl) {
+    if (appUrlUsable) {
       return NextResponse.redirect(new URL(`${appUrl}${pathname}`));
     }
     return NextResponse.redirect(new URL(`/studio${pathname}`, req.url));
