@@ -3,7 +3,7 @@ import { ensureSchema, getSql } from "./db";
 import { extractText, parseSections } from "./extract";
 import { detectInjection, neutralizeInjectionSpans } from "./integrity";
 import { evaluateCv } from "./openrouter";
-import { applyChecklistCaps, checklistSignals } from "./scoring";
+import { finalizeScores, hashScoreContent } from "./scoring";
 
 function safeError(err: unknown): string {
   const msg = String(err ?? "");
@@ -63,9 +63,14 @@ export async function runEvaluationFromUpload(opts: {
 
     const textForLlm = injectionHit ? neutralizeInjectionSpans(rawText) : rawText;
     const result = await evaluateCv(textForLlm);
-    const signals = checklistSignals(rawText, sections);
-    const scores = applyChecklistCaps(result.scores, signals, injectionHit);
+    const scores = finalizeScores({
+      llm: result.scores,
+      rawText,
+      sections,
+      injectionHit,
+    });
     const findings = [...result.findings];
+    const contentHash = hashScoreContent(rawText);
 
     if (injectionHit) {
       findings.unshift({
@@ -115,6 +120,7 @@ export async function runEvaluationFromUpload(opts: {
       SET status = 'completed',
           completed_at = now(),
           processing_ms = ${processingMs},
+          score_content_hash = ${contentHash},
           error_message = NULL
       WHERE id = ${id}
     `;

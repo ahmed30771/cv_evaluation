@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -8,11 +9,19 @@ import {
   type CSSProperties,
   type FocusEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import type { StructuredCv, TemplateId } from "@/lib/cv-types";
-import { getTheme } from "@/lib/templates";
+import { auroraHeaderGradient, resolveTheme, templateSupportsPhoto, type CustomColorPalette } from "@/lib/templates";
 import { improveDraftText } from "@/lib/api";
+import {
+  looksLikeHtml,
+  rememberEditSelection,
+  serializeEditField,
+  startFormatSelectionTracking,
+} from "@/lib/text-format";
+import { CvPhotoSlot } from "@/components/cv-templates/CvPhotoSlot";
 import {
   addSectionTemplate,
   availableSectionTemplates,
@@ -30,7 +39,9 @@ import {
 } from "@/lib/section-order";
 import type { BodySectionId } from "@/lib/cv-types";
 import { SectionShell, type SectionActionTarget } from "@/components/cv-templates/SectionShell";
+import { CvA4Pages, type PageContentRef, type PageMeta } from "@/components/cv-templates/CvA4Pages";
 import { isBodySectionId } from "@/lib/cv-types";
+import { A4_WIDTH_PX } from "@/lib/a4";
 
 const wrap: CSSProperties = {
   overflowWrap: "anywhere",
@@ -38,6 +49,190 @@ const wrap: CSSProperties = {
   maxWidth: "100%",
   minWidth: 0,
 };
+
+/** Build mailto / tel / https href for contact chips (Canva-style open-on-click). */
+function linkHrefForPart(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  if (/^mailto:/i.test(t) || /^tel:/i.test(t) || /^https?:\/\//i.test(t)) return t;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(t)) return `mailto:${t}`;
+  const digits = t.replace(/[^\d+]/g, "");
+  if (/^(\+?\d[\d\s().-]{6,}\d)$/.test(t) && digits.replace(/\D/g, "").length >= 7) {
+    return `tel:${digits.startsWith("+") ? digits : digits.replace(/\D/g, "")}`;
+  }
+  if (/^(www\.|linkedin\.com\/|github\.com\/|gitlab\.com\/|bitbucket\.org\/|behance\.net\/|dribbble\.com\/|medium\.com\/|twitter\.com\/|x\.com\/)/i.test(t)) {
+    return `https://${t.replace(/^\/\//, "")}`;
+  }
+  if (/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/\S*)?$/i.test(t)) return `https://${t}`;
+  return null;
+}
+
+function normalizeManualHref(raw: string, hint?: "email" | "phone" | "web"): string {
+  const t = raw.trim();
+  if (!t) return "";
+  if (/^(mailto:|tel:|https?:\/\/)/i.test(t)) return t;
+  if (hint === "email" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(t)) return `mailto:${t}`;
+  if (hint === "phone" || /^[\d+\s().-]{7,}$/.test(t)) {
+    const digits = t.replace(/[^\d+]/g, "");
+    return `tel:${digits.startsWith("+") ? digits : digits.replace(/\D/g, "")}`;
+  }
+  return `https://${t.replace(/^\/\//, "")}`;
+}
+
+function LinkedContactField({
+  value,
+  href,
+  onCommit,
+  onHrefCommit,
+  style,
+  placeholder,
+  onFocusField,
+  multiline,
+  hrefHint,
+}: {
+  value: string;
+  href?: string;
+  onCommit: (next: string) => void;
+  onHrefCommit: (next: string) => void;
+  style?: CSSProperties;
+  placeholder?: string;
+  onFocusField?: (el: HTMLElement, getText: () => string, commit: (t: string) => void) => void;
+  multiline?: boolean;
+  hrefHint?: "email" | "phone" | "web";
+}) {
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [draftHref, setDraftHref] = useState(href || "");
+  const seedHrefFromValue = () => {
+    const line = multiline
+      ? value.split("\n").map((l) => l.trim()).find(Boolean) || ""
+      : value;
+    return linkHrefForPart(line) || normalizeManualHref(line, hrefHint) || "";
+  };
+  const autoHref = seedHrefFromValue() || null;
+  const resolved = (href || "").trim() || autoHref;
+  const hasManual = !!(href || "").trim();
+
+  useEffect(() => {
+    if (!linkOpen) return;
+    // Always prefer rebuilding from the visible field text (email/phone/url above).
+    const fromField = seedHrefFromValue();
+    setDraftHref(fromField || (href || "").trim() || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reseed when the popover opens
+  }, [linkOpen]);
+
+  function openLinkPop() {
+    const fromField = seedHrefFromValue();
+    setDraftHref(fromField || (href || "").trim() || "");
+    setLinkOpen(true);
+  }
+
+  return (
+    <div className={`cv-contact-field${linkOpen ? " is-linking" : ""}`} style={style}>
+      <EditableText
+        value={value}
+        multiline={multiline}
+        placeholder={placeholder}
+        className={resolved ? "cv-edit-field--linkish" : undefined}
+        title={
+          resolved
+            ? hasManual
+              ? "Linked · Ctrl/Cmd+click to open"
+              : "Edit text · Ctrl/Cmd+click to open link"
+            : undefined
+        }
+        onCommit={onCommit}
+        onFocusField={onFocusField}
+        onClick={(e) => {
+          if (!resolved) return;
+          if (!(e.metaKey || e.ctrlKey)) return;
+          e.preventDefault();
+          if (resolved.startsWith("http")) window.open(resolved, "_blank", "noopener,noreferrer");
+          else window.location.href = resolved;
+        }}
+      />
+      <button
+        type="button"
+        className={`cv-contact-link-btn${hasManual || resolved ? " has-link" : ""}`}
+        title={hasManual ? "Edit link" : "Add link"}
+        aria-label={hasManual ? "Edit link" : "Add link"}
+        aria-expanded={linkOpen}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (linkOpen) setLinkOpen(false);
+          else openLinkPop();
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 5"
+            stroke="currentColor"
+            strokeWidth="1.9"
+            strokeLinecap="round"
+          />
+          <path
+            d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07L13 19"
+            stroke="currentColor"
+            strokeWidth="1.9"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+      {linkOpen && (
+        <div className="cv-contact-link-pop" onMouseDown={(e) => e.stopPropagation()}>
+          <label className="cv-contact-link-pop-label" htmlFor={`href-${placeholder || "field"}`}>
+            Link URL
+          </label>
+          <input
+            id={`href-${placeholder || "field"}`}
+            className="cv-contact-link-pop-input"
+            value={draftHref}
+            placeholder={
+              hrefHint === "email"
+                ? "mailto:name@email.com"
+                : hrefHint === "phone"
+                  ? "tel:+123456789"
+                  : "https://…"
+            }
+            onChange={(e) => setDraftHref(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onHrefCommit(normalizeManualHref(draftHref, hrefHint));
+                setLinkOpen(false);
+              }
+              if (e.key === "Escape") setLinkOpen(false);
+            }}
+            autoFocus
+          />
+          <div className="cv-contact-link-pop-actions">
+            <button
+              type="button"
+              className="cv-contact-link-pop-apply"
+              onClick={() => {
+                onHrefCommit(normalizeManualHref(draftHref, hrefHint));
+                setLinkOpen(false);
+              }}
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              className="cv-contact-link-pop-clear"
+              onClick={() => {
+                setDraftHref("");
+                onHrefCommit("");
+                setLinkOpen(false);
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function EditableText({
   value,
@@ -47,6 +242,9 @@ function EditableText({
   className,
   placeholder,
   onFocusField,
+  autoFocus,
+  title,
+  onClick,
 }: {
   value: string;
   onCommit: (next: string) => void;
@@ -55,24 +253,67 @@ function EditableText({
   className?: string;
   placeholder?: string;
   onFocusField?: (el: HTMLElement, getText: () => string, commit: (t: string) => void) => void;
+  autoFocus?: boolean;
+  title?: string;
+  onClick?: (e: MouseEvent<HTMLElement>) => void;
 }) {
   const ref = useRef<HTMLDivElement | HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    startFormatSelectionTracking();
+  }, []);
 
   const syncDom = useCallback(
     (el: HTMLElement | null) => {
       if (!el) return;
       if (document.activeElement === el) return;
-      const current = multiline ? el.innerText : el.textContent || "";
-      if (current !== (value || "")) {
+      const plainCurrent = (el.innerText || el.textContent || "").replace(/\u00a0/g, " ");
+      const plainValue = looksLikeHtml(value || "")
+        ? // compare against rendered text roughly
+          (value || "").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ")
+        : value || "";
+      // If plain text matches and DOM already has richer HTML, keep it unless the stored value is HTML.
+      if (looksLikeHtml(value || "")) {
+        if (el.innerHTML.replace(/\u00a0/g, " ").trim() !== (value || "").trim()) {
+          el.innerHTML = value || "";
+        }
+        return;
+      }
+      if (plainCurrent !== plainValue) {
         el.textContent = value || "";
       }
     },
-    [value, multiline],
+    [value],
   );
 
   useEffect(() => {
     syncDom(ref.current);
   }, [syncDom]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onApplied = () => {
+      rememberEditSelection(el);
+      const next = serializeEditField(el);
+      if (next !== value) onCommit(next);
+    };
+    el.addEventListener("cv-format-applied", onApplied as EventListener);
+    return () => el.removeEventListener("cv-format-applied", onApplied as EventListener);
+  }, [onCommit, value]);
+
+  useEffect(() => {
+    if (!autoFocus || !ref.current) return;
+    const el = ref.current;
+    el.focus();
+    const sel = window.getSelection();
+    if (!sel) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }, [autoFocus]);
 
   const setNode = useCallback(
     (node: HTMLDivElement | HTMLSpanElement | null) => {
@@ -85,21 +326,41 @@ function EditableText({
   const commit = () => {
     const el = ref.current;
     if (!el) return;
-    const next = (multiline ? el.innerText : el.textContent || "").replace(/\u00a0/g, " ").trimEnd();
+    const next = serializeEditField(el);
     if (next !== value) onCommit(next);
   };
 
   const onFocus = (e: FocusEvent<HTMLElement>) => {
+    (window as unknown as { __cvLastEditField?: HTMLElement }).__cvLastEditField = e.currentTarget;
+    rememberEditSelection(e.currentTarget);
     onFocusField?.(
       e.currentTarget,
-      () => (multiline ? e.currentTarget.innerText : e.currentTarget.textContent || ""),
+      () => serializeEditField(e.currentTarget),
       (t) => {
         if (ref.current) {
-          ref.current.textContent = t;
+          if (looksLikeHtml(t)) ref.current.innerHTML = t;
+          else ref.current.textContent = t;
           onCommit(t);
         }
       },
     );
+  };
+
+  const onBlur = () => {
+    rememberEditSelection(ref.current);
+    commit();
+  };
+
+  const onInput = () => {
+    rememberEditSelection(ref.current);
+  };
+
+  const onKeyUp = () => {
+    rememberEditSelection(ref.current);
+  };
+
+  const onMouseUp = () => {
+    rememberEditSelection(ref.current);
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -119,42 +380,35 @@ function EditableText({
     ...style,
   };
 
+  const shared = {
+    className: `cv-edit-field ${className || ""}`,
+    contentEditable: true as const,
+    suppressContentEditableWarning: true,
+    role: "textbox" as const,
+    "aria-placeholder": placeholder,
+    "data-placeholder": placeholder || undefined,
+    title,
+    style: baseStyle,
+    onBlur,
+    onFocus,
+    onInput,
+    onKeyUp,
+    onMouseUp,
+    onKeyDown,
+    onClick,
+  };
+
   if (multiline) {
-    return (
-      <div
-        ref={setNode as (n: HTMLDivElement | null) => void}
-        className={`cv-edit-field ${className || ""}`}
-        contentEditable
-        suppressContentEditableWarning
-        role="textbox"
-        aria-placeholder={placeholder}
-        style={baseStyle}
-        onBlur={commit}
-        onFocus={onFocus}
-        onKeyDown={onKeyDown}
-      />
-    );
+    return <div ref={setNode as (n: HTMLDivElement | null) => void} {...shared} />;
   }
 
-  return (
-    <span
-      ref={setNode as (n: HTMLSpanElement | null) => void}
-      className={`cv-edit-field ${className || ""}`}
-      contentEditable
-      suppressContentEditableWarning
-      role="textbox"
-      aria-placeholder={placeholder}
-      style={baseStyle}
-      onBlur={commit}
-      onFocus={onFocus}
-      onKeyDown={onKeyDown}
-    />
-  );
+  return <span ref={setNode as (n: HTMLSpanElement | null) => void} {...shared} />;
 }
 
 function SectionTitle({ children, accent }: { children: ReactNode; accent: string }) {
   return (
     <h3
+      className="cv-section-title"
       style={{
         margin: "0 0 0.4rem",
         fontSize: "0.7rem",
@@ -230,29 +484,56 @@ function collectSectionText(cv: StructuredCv, target: SectionActionTarget): stri
 export function DirectEditCvPreview({
   cv,
   templateId,
+  colorThemeId,
+  customThemes,
   evaluationId,
   onPatch,
+  onPageMetaChange,
+  zoom = 1,
 }: {
   cv: StructuredCv;
   templateId: TemplateId;
+  colorThemeId?: string | null;
+  customThemes?: CustomColorPalette[] | null;
   evaluationId: string;
   onPatch: (updater: (prev: StructuredCv) => StructuredCv) => void;
+  onPageMetaChange?: (meta: PageMeta) => void;
+  zoom?: number;
 }) {
-  const theme = getTheme(templateId);
+  const theme = resolveTheme(templateId, colorThemeId, customThemes);
   const kind = theme.kind;
   const splitMode: LayoutSplit = layoutSplitFromKind(kind);
   const isSidebar = kind === "sidebar";
-  const isBanner = kind === "banner";
   const isAurora = kind === "aurora";
   const isMagazine = kind === "magazine";
   const isCards = kind === "cards";
   const isFrame = kind === "frame";
+  const isFolio = kind === "folio";
+  const isRibbon = kind === "ribbon";
+  const isCrest = kind === "crest";
+  const isPortrait = kind === "portrait";
+  const isSpotlight = kind === "spotlight";
+  const isMedallion = kind === "medallion";
   const compact = kind === "compact";
+  const showPhotoSlot = templateSupportsPhoto(kind);
   const [focusAi, setFocusAi] = useState<FocusAi>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiErr, setAiErr] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [laneDrop, setLaneDrop] = useState<"left" | "right" | null>(null);
+
+  useEffect(() => {
+    const clear = () => setLaneDrop(null);
+    document.addEventListener("dragend", clear, true);
+    document.addEventListener("drop", clear, true);
+    document.addEventListener("pointerup", clear, true);
+    return () => {
+      document.removeEventListener("dragend", clear, true);
+      document.removeEventListener("drop", clear, true);
+      document.removeEventListener("pointerup", clear, true);
+    };
+  }, []);
 
   const bindFocus = useCallback(
     (section: string) => (el: HTMLElement, getText: () => string, commit: (t: string) => void) => {
@@ -267,19 +548,88 @@ export function DirectEditCvPreview({
     setPickerOpen(false);
   };
 
+  const duplicatePageContent = () => {
+    onPatch((prev) => ({
+      ...prev,
+      experience: [
+        ...prev.experience,
+        ...prev.experience.map((e) => ({
+          ...e,
+          bullets: [...e.bullets],
+        })),
+      ],
+      education: [
+        ...prev.education,
+        ...prev.education.map((e) => ({ ...e })),
+      ],
+      projects: [
+        ...prev.projects,
+        ...prev.projects.map((p) => ({
+          ...p,
+          bullets: p.bullets ? [...p.bullets] : undefined,
+        })),
+      ],
+      certifications: [...prev.certifications, ...prev.certifications],
+      languages: [...prev.languages, ...prev.languages],
+      awards: [...prev.awards, ...prev.awards],
+      interests: [...prev.interests, ...prev.interests],
+      summary: prev.summary ? `${prev.summary}\n\n${prev.summary}` : prev.summary,
+      skills: [...prev.skills, ...prev.skills],
+    }));
+  };
+
+  /** Blank pages are empty sheets — do not seed sections onto page 1. */
+  const prepareNewPageContent = () => {
+    /* no-op: CvA4Pages only bumps minPages for a trailing blank sheet */
+  };
+
+  const deletePageContent = (refs: PageContentRef[]) => {
+    if (!refs.length) return;
+    onPatch((prev) => {
+      const dropExp = new Set(
+        refs.filter((r) => r.kind === "entry" && r.sectionId === "experience").map((r) => r.index),
+      );
+      const dropEdu = new Set(
+        refs.filter((r) => r.kind === "entry" && r.sectionId === "education").map((r) => r.index),
+      );
+      const dropProj = new Set(
+        refs.filter((r) => r.kind === "entry" && r.sectionId === "projects").map((r) => r.index),
+      );
+      const dropSections = new Set(
+        refs.filter((r) => r.kind === "section").map((r) => r.sectionId),
+      );
+
+      let next = {
+        ...prev,
+        experience: prev.experience.filter((_, i) => !dropExp.has(i)),
+        education: prev.education.filter((_, i) => !dropEdu.has(i)),
+        projects: prev.projects.filter((_, i) => !dropProj.has(i)),
+      };
+
+      for (const id of dropSections) {
+        if (
+          id === "experience" ||
+          id === "education" ||
+          id === "projects" ||
+          id === "skills" ||
+          id === "summary" ||
+          id === "certifications" ||
+          id === "languages" ||
+          id === "awards" ||
+          id === "interests"
+        ) {
+          next = clearSection(next, id);
+        }
+      }
+      return next;
+    });
+  };
+
   const missingSections = availableSectionTemplates(cv);
 
   const activate = (key: string) => {
     setActiveKey(key);
     setAiErr(null);
-  };
-
-  const handleAdd = (target: SectionActionTarget) => {
-    if (target.sectionId === "personal" || target.sectionId === "contact") {
-      setPickerOpen(true);
-      return;
-    }
-    addFromTemplate(target.sectionId as SectionTemplateId);
   };
 
   const handleDelete = (target: SectionActionTarget) => {
@@ -289,7 +639,14 @@ export function DirectEditCvPreview({
       } else if (target.sectionId === "contact") {
         onPatch((p) => ({
           ...p,
-          personal: { ...p.personal, email: "", phone: "", location: "", links: [] },
+          personal: {
+            ...p.personal,
+            email: "",
+            phone: "",
+            location: "",
+            links: [],
+            hrefs: undefined,
+          },
         }));
       } else {
         onPatch((p) => clearSection(p, target.sectionId as SectionTemplateId));
@@ -440,7 +797,6 @@ export function DirectEditCvPreview({
   const shellProps = {
     activeKey,
     onActivate: activate,
-    onAdd: handleAdd,
     onDelete: handleDelete,
     onAiImprove: handleAiImprove,
     onDropOnSection: handleDropSection,
@@ -449,17 +805,84 @@ export function DirectEditCvPreview({
     aiError: aiErr,
   };
 
-  const shellFor = (target: SectionActionTarget) => ({
-    ...shellProps,
-    target,
-  });
+  const addEntryAfter = (sectionId: string, afterIndex: number) => {
+    onPatch((p) => {
+      if (sectionId === "experience") {
+        const experience = [...p.experience];
+        experience.splice(afterIndex + 1, 0, {
+          company: "Company",
+          title: "Job title",
+          start: "2023",
+          end: "Present",
+          bullets: ["Describe a strong achievement…"],
+        });
+        return { ...p, experience };
+      }
+      if (sectionId === "education") {
+        const education = [...p.education];
+        education.splice(afterIndex + 1, 0, {
+          school: "School / University",
+          degree: "Degree",
+          year: "2024",
+        });
+        return { ...p, education };
+      }
+      if (sectionId === "projects") {
+        const projects = [...p.projects];
+        projects.splice(afterIndex + 1, 0, {
+          name: "Project name",
+          description: "What you built and the impact…",
+        });
+        return { ...p, projects };
+      }
+      return p;
+    });
+    setActiveKey(`entry:${sectionId}:${afterIndex + 1}`);
+  };
+
+  const shellFor = (target: SectionActionTarget) => {
+    const isBody =
+      target.scope === "section" && !["personal", "contact"].includes(target.sectionId);
+    const isEntry = target.scope === "entry";
+    const isMultiEntry =
+      target.sectionId === "experience" ||
+      target.sectionId === "education" ||
+      target.sectionId === "projects";
+
+    let onInsertSection: (() => void) | undefined;
+    if (isEntry && isMultiEntry) {
+      onInsertSection = () => addEntryAfter(target.sectionId, target.index);
+    } else if (isBody && isMultiEntry) {
+      const count =
+        target.sectionId === "experience"
+          ? cv.experience.length
+          : target.sectionId === "education"
+            ? cv.education.length
+            : cv.projects.length;
+      if (count === 0) {
+        onInsertSection = () => addEntryAfter(target.sectionId, -1);
+      } else if (missingSections.length > 0) {
+        // Parent “+” adds a new section type; CSS offsets it below entry “+”s.
+        onInsertSection = () => setPickerOpen(true);
+      }
+    } else if (isBody && missingSections.length > 0) {
+      onInsertSection = () => setPickerOpen(true);
+    }
+
+    return {
+      ...shellProps,
+      target,
+      onInsertSection,
+    };
+  };
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest?.(".cv-section-shell")) return;
       if (t.closest?.(".section-picker")) return;
-      if (t.closest?.(".cv-new-section-btn")) return;
+      if (t.closest?.(".cv-section-insert-btn")) return;
+      if (t.closest?.(".cv-empty-add")) return;
       setFocusAi(null);
       setActiveKey(null);
     };
@@ -467,25 +890,51 @@ export function DirectEditCvPreview({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  const isSplitChrome = isSidebar || isMagazine || isBanner || isAurora || isFrame;
+  const isSplitChrome =
+    isSidebar || isMagazine || isFolio || isAurora || isFrame || isPortrait || isSpotlight || isMedallion;
 
-  const articleStyle: CSSProperties = {
+  const contentStyle: CSSProperties = {
     background: isCards ? `linear-gradient(180deg, ${theme.accentSoft} 0%, #fff 45%)` : "#fff",
     color: "#1a1a1a",
-    minHeight: 520,
-    boxShadow: "0 12px 40px rgba(15, 23, 42, 0.1)",
     lineHeight: 1.45,
     overflow: "visible",
-    width: "100%",
-    maxWidth: "100%",
+    width: A4_WIDTH_PX,
+    maxWidth: A4_WIDTH_PX,
     boxSizing: "border-box",
     position: "relative",
     ...(isFrame ? { padding: "0.85rem", background: theme.accentSoft } : {}),
     ...(isSidebar || isMagazine
-      ? { display: "grid", gridTemplateColumns: isMagazine ? "minmax(0,28%) minmax(0,1fr)" : "minmax(0,34%) minmax(0,1fr)" }
+      ? {
+          display: "grid",
+          gridTemplateColumns: isMagazine
+            ? "minmax(0,28%) minmax(0,1fr)"
+            : "minmax(0,34%) minmax(0,1fr)",
+          alignItems: "stretch",
+          // Transparent so the page shell rail stripe shows through.
+          background: "transparent",
+        }
       : {}),
     ...(!isSplitChrome ? { padding: compact ? "1rem" : "1.35rem 1.5rem", fontSize: compact ? "0.82rem" : "0.9rem" } : {}),
   };
+
+  const setPhoto = (photo: string | undefined) => {
+    onPatch((p) => ({
+      ...p,
+      personal: { ...p.personal, photo },
+    }));
+  };
+
+  const photoSlot = showPhotoSlot ? (
+    <CvPhotoSlot
+      photo={cv.personal.photo}
+      onChange={setPhoto}
+      accent={theme.accent}
+      size={isMedallion ? 108 : isSpotlight ? 112 : 96}
+      shape={isSpotlight ? "rounded" : "circle"}
+      dark={isSpotlight}
+      label={cv.personal.photo ? "Photo" : "Add photo"}
+    />
+  ) : null;
 
   const nameBlock = (
     <SectionShell
@@ -497,7 +946,7 @@ export function DirectEditCvPreview({
         style={{
           fontSize: isMagazine ? "1.35rem" : compact ? "1.2rem" : "1.55rem",
           fontWeight: 800,
-          color: isSidebar || isMagazine ? "inherit" : theme.accent,
+          color: isSidebar || isMagazine || isSpotlight ? "inherit" : theme.accent,
           display: "block",
           ...wrap,
         }}
@@ -507,87 +956,275 @@ export function DirectEditCvPreview({
     </SectionShell>
   );
 
+  /** Light paper / soft headers need dark ink; dark rails inherit light rail text. */
+  const contactOnDarkRail = isSidebar || isMagazine;
+  const contactInk = contactOnDarkRail ? "inherit" : "#1e293b";
+
+  const contactActive = activeKey === "section:contact";
+  const hasContact =
+    !!cv.personal.email.trim() ||
+    !!cv.personal.phone.trim() ||
+    !!cv.personal.location.trim() ||
+    cv.personal.links.some((l) => l.trim());
+
+  const showEmail = contactActive || !!cv.personal.email.trim();
+  const showPhone = contactActive || !!cv.personal.phone.trim();
+  const showLocation = contactActive || !!cv.personal.location.trim();
+  const showLinks = contactActive || cv.personal.links.some((l) => l.trim());
+
+  const setFieldHref = (key: "email" | "phone" | "location", next: string) => {
+    onPatch((p) => {
+      const hrefs = { ...(p.personal.hrefs || {}) };
+      if (next.trim()) hrefs[key] = next.trim();
+      else delete hrefs[key];
+      const hasAny =
+        !!hrefs.email || !!hrefs.phone || !!hrefs.location || (hrefs.links || []).some(Boolean);
+      return {
+        ...p,
+        personal: { ...p.personal, hrefs: hasAny ? hrefs : undefined },
+      };
+    });
+  };
+
+  const setLinkAt = (index: number, value: string) => {
+    onPatch((p) => {
+      const texts = [...p.personal.links];
+      while (texts.length <= index) texts.push("");
+      texts[index] = value.trim();
+      const prevHrefs = [...(p.personal.hrefs?.links || [])];
+      while (prevHrefs.length < texts.length) prevHrefs.push("");
+      const kept = texts
+        .map((text, i) => ({ text, href: prevHrefs[i] || "" }))
+        .filter((row) => row.text);
+      const hrefs = { ...(p.personal.hrefs || {}) };
+      hrefs.links = kept.map((row) => row.href);
+      if (!hrefs.links.some(Boolean)) delete hrefs.links;
+      const hasAny =
+        !!hrefs.email || !!hrefs.phone || !!hrefs.location || (hrefs.links || []).some(Boolean);
+      return {
+        ...p,
+        personal: {
+          ...p.personal,
+          links: kept.map((row) => row.text),
+          hrefs: hasAny ? hrefs : undefined,
+        },
+      };
+    });
+  };
+
+  const setLinkHrefAt = (index: number, next: string) => {
+    onPatch((p) => {
+      const hrefs = { ...(p.personal.hrefs || {}) };
+      const count = Math.max(p.personal.links.length, index + 1, (hrefs.links || []).length);
+      const list = Array.from({ length: count }, (_, i) => hrefs.links?.[i] || "");
+      list[index] = next.trim();
+      hrefs.links = list;
+      if (!hrefs.links.some(Boolean)) delete hrefs.links;
+      const hasAny =
+        !!hrefs.email || !!hrefs.phone || !!hrefs.location || (hrefs.links || []).some(Boolean);
+      return {
+        ...p,
+        personal: { ...p.personal, hrefs: hasAny ? hrefs : undefined },
+      };
+    });
+  };
+
+  const addLinkSlot = () => {
+    onPatch((p) => ({
+      ...p,
+      personal: {
+        ...p.personal,
+        links: [...p.personal.links.filter(Boolean), ""],
+      },
+    }));
+  };
+
+  const linkSlots =
+    showLinks
+      ? contactActive
+        ? cv.personal.links.length
+          ? cv.personal.links
+          : [""]
+        : cv.personal.links.filter((l) => l.trim())
+      : [];
+
+  const linkPlaceholder = (i: number) =>
+    i === 0 ? "LinkedIn / GitHub…" : i === 1 ? "Behance / portfolio…" : `link ${i + 1}`;
+
   const contactLine = (
-    <SectionShell
-      {...shellFor({ scope: "section", sectionId: "contact", label: "Contact" })}
-    >
-      <EditableText
-        value={[cv.personal.email, cv.personal.phone, cv.personal.location, ...cv.personal.links].filter(Boolean).join(" · ")}
-        placeholder="email · phone · location · links"
+    <SectionShell {...shellFor({ scope: "section", sectionId: "contact", label: "Contact" })}>
+      <div
+        className="cv-contact-inline"
         style={{
-          fontSize: "0.8rem",
-          color: isSidebar || isMagazine || isBanner || isAurora ? "inherit" : "#64748b",
-          opacity: isSidebar || isAurora || isBanner ? 0.9 : 1,
-          display: "block",
-          marginTop: 6,
+          color: isAurora || isSpotlight ? "inherit" : contactInk,
+          fontWeight: 550,
         }}
-        onCommit={(v) => {
-          const parts = v.split("·").map((s) => s.trim()).filter(Boolean);
-          onPatch((p) => ({
-            ...p,
-            personal: {
-              ...p.personal,
-              email: parts[0] || "",
-              phone: parts[1] || "",
-              location: parts[2] || "",
-              links: parts.slice(3),
-            },
-          }));
-        }}
-        onFocusField={bindFocus("personal")}
-      />
+      >
+        {showEmail && (
+          <LinkedContactField
+            value={cv.personal.email}
+            href={cv.personal.hrefs?.email}
+            hrefHint="email"
+            placeholder="email"
+            style={{ color: "inherit" }}
+            onCommit={(v) => onPatch((p) => ({ ...p, personal: { ...p.personal, email: v } }))}
+            onHrefCommit={(v) => setFieldHref("email", v)}
+            onFocusField={bindFocus("personal")}
+          />
+        )}
+        {showEmail && (showPhone || showLocation || linkSlots.length > 0) ? (
+          <span className="cv-contact-sep" aria-hidden>
+            ·
+          </span>
+        ) : null}
+        {showPhone && (
+          <LinkedContactField
+            value={cv.personal.phone}
+            href={cv.personal.hrefs?.phone}
+            hrefHint="phone"
+            placeholder="phone"
+            style={{ color: "inherit" }}
+            onCommit={(v) => onPatch((p) => ({ ...p, personal: { ...p.personal, phone: v } }))}
+            onHrefCommit={(v) => setFieldHref("phone", v)}
+            onFocusField={bindFocus("personal")}
+          />
+        )}
+        {showPhone && (showLocation || linkSlots.length > 0) ? (
+          <span className="cv-contact-sep" aria-hidden>
+            ·
+          </span>
+        ) : null}
+        {showLocation && (
+          <LinkedContactField
+            value={cv.personal.location}
+            href={cv.personal.hrefs?.location}
+            hrefHint="web"
+            placeholder="location"
+            style={{ color: "inherit" }}
+            onCommit={(v) => onPatch((p) => ({ ...p, personal: { ...p.personal, location: v } }))}
+            onHrefCommit={(v) => setFieldHref("location", v)}
+            onFocusField={bindFocus("personal")}
+          />
+        )}
+        {linkSlots.map((link, i) => (
+          <Fragment key={`link-${i}`}>
+            {(i > 0 || showEmail || showPhone || showLocation) && (
+              <span className="cv-contact-sep" aria-hidden>
+                ·
+              </span>
+            )}
+            <LinkedContactField
+              value={link}
+              href={cv.personal.hrefs?.links?.[i]}
+              hrefHint="web"
+              placeholder={linkPlaceholder(i)}
+              style={{ color: "inherit" }}
+              onCommit={(v) => setLinkAt(i, v)}
+              onHrefCommit={(v) => setLinkHrefAt(i, v)}
+              onFocusField={bindFocus("personal")}
+            />
+          </Fragment>
+        ))}
+        {contactActive && linkSlots.length < 8 && (
+          <button
+            type="button"
+            className="cv-contact-add-link"
+            title="Add another link"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              addLinkSlot();
+            }}
+          >
+            + link
+          </button>
+        )}
+        {!contactActive && !hasContact && <span className="cv-contact-empty-hint">Add contact</span>}
+      </div>
     </SectionShell>
   );
 
   const contactStack = (
-    <div style={{ fontSize: "0.72rem", marginTop: 8, ...wrap }}>
-      <EditableText
-        value={cv.personal.email}
-        placeholder="email"
-        style={{ display: "block", marginBottom: 4 }}
-        onCommit={(v) => onPatch((p) => ({ ...p, personal: { ...p.personal, email: v } }))}
-        onFocusField={bindFocus("personal")}
-      />
-      <EditableText
-        value={cv.personal.phone}
-        placeholder="phone"
-        style={{ display: "block", marginBottom: 4 }}
-        onCommit={(v) => onPatch((p) => ({ ...p, personal: { ...p.personal, phone: v } }))}
-        onFocusField={bindFocus("personal")}
-      />
-      <EditableText
-        value={cv.personal.location}
-        placeholder="location"
-        style={{ display: "block", marginBottom: 4 }}
-        onCommit={(v) => onPatch((p) => ({ ...p, personal: { ...p.personal, location: v } }))}
-        onFocusField={bindFocus("personal")}
-      />
-      <EditableText
-        value={cv.personal.links.join("\n")}
-        multiline
-        placeholder="links (one per line)"
-        style={{ display: "block", marginTop: 4 }}
-        onCommit={(v) =>
-          onPatch((p) => ({
-            ...p,
-            personal: {
-              ...p.personal,
-              links: v.split("\n").map((s) => s.trim()).filter(Boolean),
-            },
-          }))
-        }
-        onFocusField={bindFocus("personal")}
-      />
-    </div>
+    <SectionShell {...shellFor({ scope: "section", sectionId: "contact", label: "Contact" })}>
+      <div
+        className="cv-contact-stack"
+        style={{ fontSize: "0.78rem", marginTop: 4, color: contactInk, fontWeight: 550, ...wrap }}
+      >
+        {showEmail && (
+          <LinkedContactField
+            value={cv.personal.email}
+            href={cv.personal.hrefs?.email}
+            hrefHint="email"
+            placeholder="email"
+            style={{ display: "block", marginBottom: 4, color: "inherit" }}
+            onCommit={(v) => onPatch((p) => ({ ...p, personal: { ...p.personal, email: v } }))}
+            onHrefCommit={(v) => setFieldHref("email", v)}
+            onFocusField={bindFocus("personal")}
+          />
+        )}
+        {showPhone && (
+          <LinkedContactField
+            value={cv.personal.phone}
+            href={cv.personal.hrefs?.phone}
+            hrefHint="phone"
+            placeholder="phone"
+            style={{ display: "block", marginBottom: 4, color: "inherit" }}
+            onCommit={(v) => onPatch((p) => ({ ...p, personal: { ...p.personal, phone: v } }))}
+            onHrefCommit={(v) => setFieldHref("phone", v)}
+            onFocusField={bindFocus("personal")}
+          />
+        )}
+        {showLocation && (
+          <LinkedContactField
+            value={cv.personal.location}
+            href={cv.personal.hrefs?.location}
+            hrefHint="web"
+            placeholder="location"
+            style={{ display: "block", marginBottom: 4, color: "inherit" }}
+            onCommit={(v) => onPatch((p) => ({ ...p, personal: { ...p.personal, location: v } }))}
+            onHrefCommit={(v) => setFieldHref("location", v)}
+            onFocusField={bindFocus("personal")}
+          />
+        )}
+        {linkSlots.map((link, i) => (
+          <LinkedContactField
+            key={`stack-link-${i}`}
+            value={link}
+            href={cv.personal.hrefs?.links?.[i]}
+            hrefHint="web"
+            placeholder={linkPlaceholder(i)}
+            style={{ display: "block", marginBottom: 4, color: "inherit" }}
+            onCommit={(v) => setLinkAt(i, v)}
+            onHrefCommit={(v) => setLinkHrefAt(i, v)}
+            onFocusField={bindFocus("personal")}
+          />
+        ))}
+        {contactActive && linkSlots.length < 8 && (
+          <button
+            type="button"
+            className="cv-contact-add-link"
+            title="Add another link"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              addLinkSlot();
+            }}
+          >
+            + Add link
+          </button>
+        )}
+        {!contactActive && !hasContact && <p className="cv-contact-empty-hint">Add contact</p>}
+      </div>
+    </SectionShell>
   );
 
   const summaryBlock = sectionIsPresent(cv, "summary") ? (
     <SectionShell
       {...shellFor({ scope: "section", sectionId: "summary", label: "Summary" })}
-      style={{ marginTop: isBanner || isAurora || isSidebar ? "0.85rem" : "0.9rem" }}
+      style={{ marginTop: isFolio || isAurora || isSidebar ? "0.85rem" : "0.9rem" }}
     >
       <SectionTitle accent={theme.accent}>
-        {isSidebar ? "Profile" : isAurora ? "About" : isBanner ? "Summary" : "Professional Summary"}
+        {isAurora ? "About" : isFolio ? "Summary" : "Professional Summary"}
       </SectionTitle>
       <EditableText
         value={cv.summary}
@@ -634,7 +1271,7 @@ export function DirectEditCvPreview({
           <EditableText
             value={[job.start, job.end].filter(Boolean).join(" – ")}
             placeholder="Start – End"
-            style={{ fontSize: "0.76rem", color: "#64748b", display: "block" }}
+            style={{ fontSize: "0.76rem", color: "#334155", display: "block", fontWeight: 550 }}
             onCommit={(v) => {
               const [start, end] = v.split("–").map((s) => s.trim());
               onPatch((p) => {
@@ -771,7 +1408,7 @@ export function DirectEditCvPreview({
             onPatch((p) => ({
               ...p,
               [sectionKey]: v
-                .split(joinWith.trim() === "," ? /,/ : /\n/)
+                .split(joinWith.trim() === "," ? /,/ : joinWith.includes("·") ? /\s*·\s*/ : /\n/)
                 .map((s) => s.trim())
                 .filter(Boolean),
             }))
@@ -781,14 +1418,32 @@ export function DirectEditCvPreview({
       </SectionShell>
     ) : null;
 
-  const skillsBlock = listSection("Skills", "skills", cv.skills, "Skill1, Skill2, Skill3…");
+  const skillsBlock = listSection(
+    "Skills",
+    "skills",
+    cv.skills,
+    "Skill1 · Skill2 · Skill3…",
+    " · ",
+  );
   const certsBlock = listSection("Certifications", "certifications", cv.certifications, "Cert A, Cert B…");
   const languages = cv.languages ?? [];
   const awards = cv.awards ?? [];
   const interests = cv.interests ?? [];
-  const languagesBlock = listSection("Languages", "languages", languages, "English, Urdu…");
+  const languagesBlock = listSection(
+    "Languages",
+    "languages",
+    languages,
+    "English · Urdu…",
+    " · ",
+  );
   const awardsBlock = listSection("Awards", "awards", awards, "Award title…");
-  const interestsBlock = listSection("Interests", "interests", interests, "Interest 1, Interest 2…");
+  const interestsBlock = listSection(
+    "Interests",
+    "interests",
+    interests,
+    "Interest 1 · Interest 2…",
+    " · ",
+  );
 
   const blockMap: Partial<Record<BodySectionId, ReactNode>> = {
     summary: summaryBlock,
@@ -802,40 +1457,70 @@ export function DirectEditCvPreview({
     interests: interestsBlock,
   };
 
+  const emptyAdd = (
+    <div className="cv-empty-add">
+      <button
+        type="button"
+        className="cv-section-insert-btn"
+        aria-label="Add section"
+        onClick={() => setPickerOpen(true)}
+      >
+        +
+      </button>
+      <span>Add section</span>
+    </div>
+  );
+
   const renderLane = (ids: BodySectionId[], column: "left" | "right") => (
     <div
-      className={`cv-column-lane cv-column-lane--${column}`}
+      className={`cv-column-lane cv-column-lane--${column}${laneDrop === column ? " is-drop-target" : ""}`}
       onDragOver={(e) => {
-        if (!e.dataTransfer.types.includes("text/section-id")) return;
+        if (![...e.dataTransfer.types].includes("text/section-id")) return;
         e.preventDefault();
-        e.currentTarget.classList.add("is-drop-target");
+        e.dataTransfer.dropEffect = "move";
+        if (laneDrop !== column) setLaneDrop(column);
       }}
       onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          e.currentTarget.classList.remove("is-drop-target");
+        const next = e.relatedTarget as Node | null;
+        // relatedTarget is often null mid-drag; only clear when we truly left the lane.
+        if (next && e.currentTarget.contains(next)) return;
+        if (!next) {
+          // Leaving into nowhere / outside window — clear this lane if it's active.
+          setLaneDrop((cur) => (cur === column ? null : cur));
+          return;
         }
+        setLaneDrop((cur) => (cur === column ? null : cur));
       }}
       onDrop={(e) => {
         e.preventDefault();
-        e.currentTarget.classList.remove("is-drop-target");
+        setLaneDrop(null);
         const draggedId = e.dataTransfer.getData("text/section-id");
         if (!isBodySectionId(draggedId)) return;
         onPatch((p) => moveSectionColumn(p, draggedId, column, splitMode));
       }}
     >
-      {ids.map((id) => blockMap[id])}
-      {!ids.length && <div className="cv-column-empty">Drop section here ({column})</div>}
+      {ids.map((id) => (
+        <Fragment key={id}>{blockMap[id]}</Fragment>
+      ))}
+      {!ids.length && emptyAdd}
     </div>
   );
 
-  const orderedBlocks = presentOrder.map((id) => blockMap[id]).filter(Boolean);
+  const orderedBlocks = presentOrder
+    .map((id) => {
+      const block = blockMap[id];
+      return block ? <Fragment key={id}>{block}</Fragment> : null;
+    })
+    .filter(Boolean);
   const mainColumn = useTwoColumns ? (
     <div className="cv-split-body">
       {renderLane(columns.left, "left")}
       {renderLane(columns.right, "right")}
     </div>
-  ) : (
+  ) : presentOrder.length ? (
     <>{orderedBlocks}</>
+  ) : (
+    emptyAdd
   );
 
   let body: ReactNode;
@@ -844,20 +1529,35 @@ export function DirectEditCvPreview({
     body = (
       <>
         <aside
+          className="cv-sidebar-rail"
           style={{
-            background: isMagazine
-              ? `linear-gradient(165deg, ${theme.accent} 0%, ${theme.accent}dd 70%, #0f172a 140%)`
-              : theme.railBg,
+            background: isMagazine ? theme.accent : theme.railBg,
             color: isMagazine ? "#fff" : theme.railText,
-            padding: "1.2rem 0.9rem",
+            padding: "1.2rem 0.9rem 1.4rem",
             minWidth: 0,
+            minHeight: "100%",
+            height: "100%",
+            alignSelf: "stretch",
             overflow: "visible",
           }}
         >
           {nameBlock}
           {contactStack}
+          {renderLane(columns.left, "left")}
         </aside>
-        <div style={{ padding: "1.15rem", minWidth: 0, overflow: "visible" }}>{mainColumn}</div>
+        <div
+          className="cv-sidebar-main"
+          style={{
+            padding: "1.15rem 1.25rem",
+            minWidth: 0,
+            overflow: "visible",
+            background: "#fff",
+            minHeight: "100%",
+            alignSelf: "stretch",
+          }}
+        >
+          {columns.right.length ? renderLane(columns.right, "right") : emptyAdd}
+        </div>
       </>
     );
   } else if (isAurora) {
@@ -866,8 +1566,8 @@ export function DirectEditCvPreview({
         <header
           style={{
             padding: "1.5rem 1.4rem 1.25rem",
-            background: "linear-gradient(125deg, #a5f3fc 0%, #c4b5fd 45%, #fbcfe8 100%)",
-            color: theme.headerText,
+            background: auroraHeaderGradient(theme.accent, theme.accentSoft),
+            color: "#0f172a",
           }}
         >
           {nameBlock}
@@ -876,20 +1576,181 @@ export function DirectEditCvPreview({
         <div style={{ padding: "1.15rem 1.25rem", fontSize: "0.86rem" }}>{mainColumn}</div>
       </>
     );
-  } else if (isBanner) {
+  } else if (isPortrait) {
     body = (
       <>
         <header
           style={{
-            padding: "1.4rem 1.45rem 1.2rem",
-            background: `linear-gradient(115deg, ${theme.accent} 0%, ${theme.accent}bb 55%, ${theme.accentSoft} 160%)`,
+            display: "flex",
+            gap: "1rem",
+            alignItems: "center",
+            padding: "1.25rem 1.35rem 1rem",
+            borderBottom: `3px solid ${theme.accent}`,
+            background: "#fff",
+          }}
+        >
+          {photoSlot}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {nameBlock}
+            {contactLine}
+          </div>
+        </header>
+        <div style={{ padding: "1.05rem 1.35rem", background: "#fff" }}>{mainColumn}</div>
+      </>
+    );
+  } else if (isSpotlight) {
+    body = (
+      <>
+        <header
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) auto",
+            gap: "1rem",
+            alignItems: "center",
+            padding: "1.35rem 1.4rem",
+            background: `linear-gradient(120deg, ${theme.accent} 0%, ${theme.accent}cc 70%, ${theme.railBg} 160%)`,
             color: theme.headerText,
           }}
         >
+          <div style={{ minWidth: 0 }}>
+            {nameBlock}
+            <div style={{ color: theme.headerText }}>{contactLine}</div>
+          </div>
+          {photoSlot}
+        </header>
+        <div style={{ padding: "1.1rem 1.25rem", fontSize: "0.86rem" }}>{mainColumn}</div>
+      </>
+    );
+  } else if (isMedallion) {
+    body = (
+      <>
+        <header
+          style={{
+            textAlign: "center",
+            padding: "1.35rem 1.25rem 1.05rem",
+            background: theme.accentSoft,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "0.65rem",
+          }}
+        >
+          {photoSlot}
+          <div style={{ width: "100%" }}>
+            {nameBlock}
+            <div
+              style={{
+                width: 56,
+                height: 3,
+                background: theme.accent,
+                margin: "0.45rem auto 0.5rem",
+                borderRadius: 999,
+              }}
+            />
+            {contactLine}
+          </div>
+        </header>
+        <div style={{ padding: "1.05rem 1.3rem", background: "#fff" }}>{mainColumn}</div>
+      </>
+    );
+  } else if (isFolio) {
+    body = (
+      <>
+        <div style={{ height: 12, background: theme.accent, flexShrink: 0 }} />
+        <header
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.25fr) minmax(0, 1fr)",
+            gap: "1rem",
+            padding: "1.1rem 1.25rem 0.9rem",
+            borderBottom: `1px solid ${theme.accentSoft}`,
+            background: "#fff",
+          }}
+        >
+          <div>{nameBlock}</div>
+          <div style={{ alignSelf: "center", fontSize: "0.82rem", color: "#1e293b" }}>{contactStack}</div>
+        </header>
+        <div style={{ padding: "1rem 1.15rem", background: "#fff", fontSize: "0.86rem" }}>{mainColumn}</div>
+      </>
+    );
+  } else if (isRibbon) {
+    body = (
+      <div style={{ display: "flex", minHeight: "100%", alignSelf: "stretch" }}>
+        <div
+          aria-hidden
+          style={{
+            width: 14,
+            flexShrink: 0,
+            background: theme.accent,
+            alignSelf: "stretch",
+            minHeight: "100%",
+          }}
+        />
+        <div style={{ flex: 1, minWidth: 0, padding: "1.15rem 1.2rem", background: "#fff" }}>
+          <header style={{ marginBottom: "0.85rem" }}>
+            {nameBlock}
+            <div
+              style={{
+                height: 2,
+                width: 72,
+                background: theme.accent,
+                margin: "0.4rem 0 0.45rem",
+                borderRadius: 2,
+              }}
+            />
+            {contactLine}
+          </header>
+          {mainColumn}
+        </div>
+      </div>
+    );
+  } else if (isCrest) {
+    body = (
+      <>
+        <header
+          style={{
+            textAlign: "center",
+            padding: "1.4rem 1.35rem 1.05rem",
+            background: theme.accentSoft,
+          }}
+        >
+          <div
+            style={{
+              width: 52,
+              height: 5,
+              background: theme.accent,
+              margin: "0 auto 0.7rem",
+              borderRadius: 999,
+            }}
+          />
           {nameBlock}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              margin: "0.55rem auto 0.5rem",
+              maxWidth: 280,
+            }}
+          >
+            <span style={{ flex: 1, height: 1, background: theme.accent, opacity: 0.55 }} />
+            <span
+              style={{
+                fontSize: "0.62rem",
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                color: theme.accent,
+                fontWeight: 750,
+              }}
+            >
+              Resume
+            </span>
+            <span style={{ flex: 1, height: 1, background: theme.accent, opacity: 0.55 }} />
+          </div>
           {contactLine}
         </header>
-        <div style={{ padding: "1rem", background: theme.accentSoft, fontSize: "0.85rem" }}>{mainColumn}</div>
+        <div style={{ padding: "1.05rem 1.25rem", background: "#fff" }}>{mainColumn}</div>
       </>
     );
   } else if (isFrame) {
@@ -941,28 +1802,49 @@ export function DirectEditCvPreview({
     );
   }
 
+  const pageShellStyle: CSSProperties | undefined =
+    isSidebar || isMagazine
+      ? {
+          background: isMagazine
+            ? `linear-gradient(90deg, ${theme.accent} 0%, ${theme.accent} 28%, #fff 28%, #fff 100%)`
+            : `linear-gradient(90deg, ${theme.railBg} 0%, ${theme.railBg} 34%, #ffffff 34%, #ffffff 100%)`,
+        }
+      : isRibbon
+        ? {
+            background: `linear-gradient(90deg, ${theme.accent} 0%, ${theme.accent} 14px, #ffffff 14px, #ffffff 100%)`,
+          }
+        : undefined;
+
+  const railPaint =
+    isSidebar || isMagazine
+      ? {
+          width: isMagazine ? "28%" : "34%",
+          background: isMagazine ? theme.accent : theme.railBg,
+        }
+      : isRibbon
+        ? {
+            width: "14px",
+            background: theme.accent,
+          }
+        : undefined;
+
   return (
-    <div className="direct-edit-root preview-canvas-wrap">
-      <article style={articleStyle} className="direct-edit-cv">
+    <div
+      className={`direct-edit-root preview-canvas-wrap${activeKey ? " has-section-selection" : ""}`}
+    >
+      <CvA4Pages
+        key={templateId}
+        contentStyle={contentStyle}
+        onPageMetaChange={onPageMetaChange}
+        onDuplicatePage={duplicatePageContent}
+        onPrepareNewPage={prepareNewPageContent}
+        onDeletePageContent={deletePageContent}
+        pageShellStyle={pageShellStyle}
+        railPaint={railPaint}
+        zoom={zoom}
+      >
         {body}
-        <div className="cv-new-section-bar">
-          {missingSections.length > 0 ? (
-            <>
-              <button
-                type="button"
-                className="cv-new-section-btn"
-                onClick={() => setPickerOpen(true)}
-                aria-label="Add new section"
-              >
-                +
-              </button>
-              <span>Add section</span>
-            </>
-          ) : (
-            <span className="cv-sections-complete">All section types added</span>
-          )}
-        </div>
-      </article>
+      </CvA4Pages>
 
       {pickerOpen && (
         <div className="section-picker" role="dialog" aria-label="Choose a section to add">

@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from "react";
+import { runExecCommand, toggleBulletSelection, transformSelectedCase } from "@/lib/text-format";
 
 export type SectionActionTarget =
   | { scope: "section"; sectionId: string; label: string }
@@ -12,12 +20,12 @@ export function SectionShell({
   target,
   activeKey,
   onActivate,
-  onAdd,
   onDelete,
   onAiImprove,
   onDragSectionStart,
   onDropOnSection,
   onDropOnEntry,
+  onInsertSection,
   aiBusy,
   aiError,
   children,
@@ -27,7 +35,6 @@ export function SectionShell({
   target: SectionActionTarget;
   activeKey: string | null;
   onActivate: (key: string, target: SectionActionTarget) => void;
-  onAdd: (target: SectionActionTarget) => void;
   onDelete: (target: SectionActionTarget) => void;
   onAiImprove: (target: SectionActionTarget, instruction: string) => Promise<void>;
   onDragSectionStart?: (sectionId: string) => void;
@@ -38,6 +45,8 @@ export function SectionShell({
     toIndex: number,
     place: "before" | "after",
   ) => void;
+  /** Hover “+” — add a section type, or an entry below for multi-item sections. */
+  onInsertSection?: () => void;
   aiBusy: boolean;
   aiError: string | null;
   children: ReactNode;
@@ -48,6 +57,7 @@ export function SectionShell({
   const active = activeKey === key;
   const [panel, setPanel] = useState<Panel>("none");
   const [dropEdge, setDropEdge] = useState<"before" | "after" | null>(null);
+  const [toolbarBelow, setToolbarBelow] = useState(false);
   const [instruction, setInstruction] = useState(
     "Improve this for clarity, impact, and ATS keywords. Keep all facts true.",
   );
@@ -60,55 +70,49 @@ export function SectionShell({
     if (!active) setPanel("none");
   }, [active]);
 
-  function runFormat(cmd: string) {
-    const el = rootRef.current?.querySelector(".cv-edit-field:focus") as HTMLElement | null;
-    if (el) el.focus();
-    else {
-      const first = rootRef.current?.querySelector(".cv-edit-field") as HTMLElement | null;
-      first?.focus();
+  // A4 clip uses overflow:hidden — flip toolbar below when there isn't room above.
+  useLayoutEffect(() => {
+    if (!active) {
+      setToolbarBelow(false);
+      return;
     }
-    try {
-      document.execCommand(cmd, false);
-    } catch {
-      /* ignore unsupported */
-    }
-  }
+    const shell = rootRef.current;
+    if (!shell) return;
 
-  function wrapSelection(before: string, after: string) {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
-    const text = sel.toString();
-    if (!text) return;
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-    range.insertNode(document.createTextNode(`${before}${text}${after}`));
-    sel.removeAllRanges();
+    const place = () => {
+      const clip = shell.closest(".cv-a4-clip") as HTMLElement | null;
+      if (!clip) {
+        setToolbarBelow(false);
+        return;
+      }
+      const shellRect = shell.getBoundingClientRect();
+      const clipRect = clip.getBoundingClientRect();
+      const need = 48;
+      const spaceAbove = shellRect.top - clipRect.top;
+      const spaceBelow = clipRect.bottom - shellRect.bottom;
+      setToolbarBelow(spaceAbove < need && spaceBelow >= need);
+    };
+
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(shell);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [active, key]);
+
+  function runFormat(cmd: string) {
+    runExecCommand(cmd);
   }
 
   function transformSelection(mode: "upper" | "lower" | "title" | "bullet") {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
-    const text = sel.toString();
-    if (!text) return;
-    let next = text;
-    if (mode === "upper") next = text.toUpperCase();
-    if (mode === "lower") next = text.toLowerCase();
-    if (mode === "title") {
-      next = text.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-    }
     if (mode === "bullet") {
-      next = text
-        .split(/\n/)
-        .map((line) => {
-          const t = line.replace(/^[-•*]\s*/, "").trim();
-          return t ? `• ${t}` : line;
-        })
-        .join("\n");
+      toggleBulletSelection();
+      return;
     }
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-    range.insertNode(document.createTextNode(next));
-    sel.removeAllRanges();
+    transformSelectedCase(mode);
   }
 
   function onDragStart(e: DragEvent) {
@@ -184,12 +188,9 @@ export function SectionShell({
       onMouseDown={(e) => {
         if ((e.target as HTMLElement).closest(".cv-section-toolbar")) return;
         if ((e.target as HTMLElement).closest(".cv-section-grip")) return;
-        if ((e.target as HTMLElement).closest(".cv-format-panel")) return;
+        if ((e.target as HTMLElement).closest(".cv-format-popover")) return;
         if ((e.target as HTMLElement).closest(".cv-ai-panel")) return;
-        e.stopPropagation();
-        onActivate(key, target);
-      }}
-      onMouseOver={(e) => {
+        if ((e.target as HTMLElement).closest(".cv-section-insert")) return;
         e.stopPropagation();
         onActivate(key, target);
       }}
@@ -216,20 +217,68 @@ export function SectionShell({
         </button>
       )}
       {active && (
-        <div className="cv-section-toolbar" role="toolbar" aria-label={`${target.label} tools`}>
-          <button type="button" className="cv-tool-btn" title="Add" onClick={() => onAdd(target)}>
-            <span aria-hidden>+</span>
-            Add
-          </button>
+        <div
+          className={`cv-section-toolbar${toolbarBelow ? " is-below" : ""}`}
+          role="toolbar"
+          aria-label={`${target.label} tools`}
+        >
           <button
             type="button"
             className={`cv-tool-btn ${panel === "format" ? "is-on" : ""}`}
             title="Text decoration"
+            aria-expanded={panel === "format"}
             onClick={() => setPanel((p) => (p === "format" ? "none" : "format"))}
           >
             <span aria-hidden>Aa</span>
             Format
           </button>
+          {panel === "format" && (
+            <div className="cv-format-inline" role="group" aria-label="Text formatting">
+              <button type="button" className="cv-format-btn" onClick={() => runFormat("bold")} title="Bold">
+                <strong>B</strong>
+              </button>
+              <button type="button" className="cv-format-btn" onClick={() => runFormat("italic")} title="Italic">
+                <em>I</em>
+              </button>
+              <button type="button" className="cv-format-btn" onClick={() => runFormat("underline")} title="Underline">
+                <span className="cv-format-u">U</span>
+              </button>
+              <span className="cv-format-divider" aria-hidden />
+              <button
+                type="button"
+                className="cv-format-btn"
+                onClick={() => transformSelection("bullet")}
+                title="Toggle bullet list"
+              >
+                •••
+              </button>
+              <span className="cv-format-divider" aria-hidden />
+              <button
+                type="button"
+                className="cv-format-btn"
+                onClick={() => transformSelection("upper")}
+                title="UPPERCASE"
+              >
+                AA
+              </button>
+              <button
+                type="button"
+                className="cv-format-btn"
+                onClick={() => transformSelection("lower")}
+                title="lowercase"
+              >
+                aa
+              </button>
+              <button
+                type="button"
+                className="cv-format-btn"
+                onClick={() => transformSelection("title")}
+                title="Title Case"
+              >
+                Tt
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className={`cv-tool-btn ${panel === "ai" ? "is-on" : ""}`}
@@ -276,36 +325,6 @@ export function SectionShell({
         </div>
       )}
 
-      {active && panel === "format" && (
-        <div className="cv-format-panel">
-          <button type="button" onClick={() => runFormat("bold")} title="Bold">
-            <strong>B</strong>
-          </button>
-          <button type="button" onClick={() => runFormat("italic")} title="Italic">
-            <em>I</em>
-          </button>
-          <button type="button" onClick={() => runFormat("underline")} title="Underline">
-            <span style={{ textDecoration: "underline" }}>U</span>
-          </button>
-          <button type="button" onClick={() => wrapSelection("**", "**")} title="Mark bold">
-            **
-          </button>
-          <button type="button" onClick={() => transformSelection("bullet")} title="Bullets">
-            • List
-          </button>
-          <button type="button" onClick={() => transformSelection("upper")} title="UPPERCASE">
-            AA
-          </button>
-          <button type="button" onClick={() => transformSelection("lower")} title="lowercase">
-            aa
-          </button>
-          <button type="button" onClick={() => transformSelection("title")} title="Title Case">
-            Tt
-          </button>
-          <span className="cv-format-hint">Select text in the field, then apply</span>
-        </div>
-      )}
-
       {active && panel === "ai" && (
         <div className="cv-ai-panel">
           <label htmlFor={`ai-ins-${key}`}>Instructions</label>
@@ -332,6 +351,24 @@ export function SectionShell({
       )}
 
       <div className="cv-section-shell-body">{children}</div>
+
+      {onInsertSection && (isBodySection || isEntry) ? (
+        <div className="cv-section-insert">
+          <button
+            type="button"
+            className="cv-section-insert-btn"
+            title={isEntry ? "Add entry below" : "Add section"}
+            aria-label={isEntry ? "Add entry below" : "Add section below"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onInsertSection();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            +
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

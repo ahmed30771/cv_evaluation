@@ -1,101 +1,85 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import type { TemplateId } from "@/lib/cv-types";
-import { exportCvUrl } from "@/lib/api";
+import type { EditorPanel } from "@/components/editor/EditorPanels";
 
-const STORAGE_KEY = "bx.editor.leftRailExpanded";
+type RailItem = {
+  kind: "panel";
+  id: NonNullable<EditorPanel>;
+  label: string;
+  icon: string;
+  badge?: string | null;
+};
 
 export function EditorLeftRail({
-  id,
-  templateId,
-  onAiRewrite,
-  aiBusy,
+  active,
+  onOpen,
+  fixGrade,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: {
-  id: string;
-  templateId: TemplateId;
-  onAiRewrite: () => void;
-  aiBusy: boolean;
+  active: EditorPanel;
+  onOpen: (panel: EditorPanel) => void;
+  fixGrade?: string | null;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const toggle = (panel: NonNullable<EditorPanel>) => onOpen(active === panel ? null : panel);
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved === "0") setExpanded(false);
-      else if (saved === "1") setExpanded(true);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  function toggle() {
-    setExpanded((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }
+  const items: RailItem[] = [
+    { kind: "panel", id: "templates", label: "Templates", icon: "▦" },
+    { kind: "panel", id: "design", label: "Design", icon: "◐" },
+    { kind: "panel", id: "format", label: "Format", icon: "Aa" },
+    { kind: "panel", id: "tailor", label: "Rewrite", icon: "✦" },
+    { kind: "panel", id: "fix", label: "Fix", icon: "✓", badge: fixGrade },
+    { kind: "panel", id: "history", label: "History", icon: "◷" },
+  ];
 
   return (
-    <nav
-      className={`editor-left-rail ${expanded ? "is-expanded" : ""}`}
-      aria-label="Resume actions"
-    >
+    <nav className="editor-left-rail" aria-label="Resume tools">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className={`rail-item ${active === item.id ? "is-active" : ""}`}
+          aria-pressed={active === item.id}
+          onClick={() => toggle(item.id)}
+        >
+          <span className="rail-item-ico" aria-hidden>
+            {item.icon}
+            {item.badge ? <em className="rail-item-badge">{item.badge}</em> : null}
+          </span>
+          <span className="rail-item-label">{item.label}</span>
+        </button>
+      ))}
       <button
         type="button"
-        className="rail-toggle"
-        title={expanded ? "Collapse menu" : "Expand menu"}
-        aria-label={expanded ? "Collapse menu" : "Expand menu"}
-        aria-expanded={expanded}
-        onClick={toggle}
+        className="rail-item rail-item-undo-redo"
+        title="Undo"
+        aria-label="Undo"
+        disabled={!canUndo}
+        onClick={onUndo}
       >
-        <span aria-hidden>{expanded ? "‹" : "›"}</span>
-        {expanded && <span className="rail-label">Collapse</span>}
+        <span className="rail-item-ico" aria-hidden>
+          ↶
+        </span>
+        <span className="rail-item-label">Undo</span>
       </button>
-
-      <Link href={`/evaluations/${id}`} className="rail-btn" title="Score report">
-        <span className="rail-ico" aria-hidden>
-          ◉
-        </span>
-        <span className="rail-label">Score report</span>
-      </Link>
-      <a
-        className="rail-btn"
-        href={exportCvUrl(id, "pdf", templateId)}
-        title="Download PDF"
-      >
-        <span className="rail-ico" aria-hidden>
-          ↓
-        </span>
-        <span className="rail-label">Download PDF</span>
-      </a>
-      <a
-        className="rail-btn"
-        href={exportCvUrl(id, "docx", templateId)}
-        title="Download DOCX"
-      >
-        <span className="rail-ico" aria-hidden>
-          📑
-        </span>
-        <span className="rail-label">Download DOCX</span>
-      </a>
       <button
         type="button"
-        className="rail-btn"
-        title="Full AI rewrite"
-        disabled={aiBusy}
-        onClick={onAiRewrite}
+        className="rail-item rail-item-undo-redo"
+        title="Redo"
+        aria-label="Redo"
+        disabled={!canRedo}
+        onClick={onRedo}
       >
-        <span className="rail-ico" aria-hidden>
-          ✦
+        <span className="rail-item-ico" aria-hidden>
+          ↷
         </span>
-        <span className="rail-label">{aiBusy ? "Rewriting…" : "AI rewrite"}</span>
+        <span className="rail-item-label">Redo</span>
       </button>
     </nav>
   );

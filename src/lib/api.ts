@@ -54,6 +54,16 @@ export type CvRewrite = {
     target_role?: string;
     preference?: "ats" | "visual";
     source?: "blank" | "upload";
+    color_theme?: string;
+    custom_themes?: Array<{
+      id: string;
+      label: string;
+      accent: string;
+      accentSoft: string;
+      headerText: string;
+      railBg: string;
+      railText: string;
+    }>;
   };
 };
 

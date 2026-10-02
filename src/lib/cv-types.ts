@@ -11,6 +11,9 @@ export const TEMPLATE_IDS = [
   "indigo",
   "sunset",
   "aurora",
+  "portrait",
+  "spotlight",
+  "medallion",
 ] as const;
 
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
@@ -26,6 +29,16 @@ export type StructuredCv = {
     phone: string;
     location: string;
     links: string[];
+    /** Optional profile photo as a data URL (jpeg/png/webp). Omitted when unused. */
+    photo?: string;
+    /** Optional hyperlink overrides (display text stays in the fields above). */
+    hrefs?: {
+      email?: string;
+      phone?: string;
+      location?: string;
+      /** Parallel to `links` — empty/omitted means auto-detect from the link text. */
+      links?: string[];
+    };
   };
   summary: string;
   skills: string[];

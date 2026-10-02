@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isTemplateId } from "@/lib/cv-types";
+import { isColorThemeId, isCustomThemeId, normalizeCustomThemes } from "@/lib/templates";
 import { getRewrite, saveRewrite } from "@/server/rewrite";
 import { buildDocx } from "@/server/export/docx";
 import { buildPdf } from "@/server/export/pdf";
@@ -30,6 +31,12 @@ export async function GET(req: Request, ctx: Ctx) {
       await saveRewrite(id, row.content, templateId);
     }
 
+    const customThemes = normalizeCustomThemes(row.meta?.custom_themes);
+    const colorThemeId =
+      isColorThemeId(row.meta?.color_theme) || isCustomThemeId(row.meta?.color_theme)
+        ? row.meta!.color_theme!
+        : null;
+
     const filenameBase = (row.content.personal.fullName || "resume")
       .replace(/[^\w\- ]+/g, "")
       .trim()
@@ -37,7 +44,7 @@ export async function GET(req: Request, ctx: Ctx) {
       .slice(0, 60) || "resume";
 
     if (format === "docx") {
-      const buf = await buildDocx(row.content, templateId);
+      const buf = await buildDocx(row.content, templateId, colorThemeId, customThemes);
       return new NextResponse(new Uint8Array(buf), {
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -46,7 +53,7 @@ export async function GET(req: Request, ctx: Ctx) {
       });
     }
 
-    const buf = await buildPdf(row.content, templateId);
+    const buf = await buildPdf(row.content, templateId, colorThemeId, customThemes);
     return new NextResponse(new Uint8Array(buf), {
       headers: {
         "Content-Type": "application/pdf",

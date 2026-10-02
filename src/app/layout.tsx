@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 
@@ -15,9 +15,19 @@ const sans = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: "Bluexech Resume — Build & evaluate CVs",
+  title: {
+    default: "Offerquay — Get job-ready",
+    template: "%s · Offerquay",
+  },
   description:
-    "Build an ATS-friendly resume with live templates and PDF/DOCX export, or score an existing CV with AI.",
+    "Offerquay helps you prepare for your next role. Resume Studio is live; interview prep and more are coming.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

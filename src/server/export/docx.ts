@@ -5,15 +5,24 @@ import {
   HeadingLevel,
   Packer,
   Paragraph,
+  ShadingType,
   Table,
   TableCell,
   TableRow,
   TextRun,
   WidthType,
+  VerticalAlign,
 } from "docx";
-import type { StructuredCv } from "@/lib/cv-types";
-import type { TemplateId } from "@/lib/cv-types";
-import { getTheme } from "@/lib/templates";
+import type { BodySectionId, StructuredCv, TemplateId } from "@/lib/cv-types";
+import { resolveTheme, type CustomColorPalette } from "@/lib/templates";
+import {
+  columnsForExport,
+  exportModeFromKind,
+  isListSection,
+  labelFor,
+  listText,
+  orderedSections,
+} from "@/server/export/layout";
 
 function contactLine(cv: StructuredCv): string {
   return [cv.personal.email, cv.personal.phone, cv.personal.location, ...cv.personal.links]
@@ -26,7 +35,13 @@ function heading(text: string, size = 24, color?: string): Paragraph {
     heading: HeadingLevel.HEADING_2,
     spacing: { before: 200, after: 80 },
     children: [
-      new TextRun({ text: text.toUpperCase(), bold: true, size, font: "Calibri", color: color?.replace("#", "") }),
+      new TextRun({
+        text: text.toUpperCase(),
+        bold: true,
+        size,
+        font: "Calibri",
+        color: color?.replace("#", ""),
+      }),
     ],
   });
 }
@@ -46,95 +61,128 @@ function body(text: string, opts?: { bold?: boolean; size?: number; color?: stri
   });
 }
 
-function bullet(text: string): Paragraph {
+function bullet(text: string, color?: string): Paragraph {
   return new Paragraph({
     bullet: { level: 0 },
     spacing: { after: 40 },
-    children: [new TextRun({ text, size: 20, font: "Calibri" })],
+    children: [new TextRun({ text, size: 20, font: "Calibri", color: color?.replace("#", "") })],
   });
 }
 
-function sectionBlocks(cv: StructuredCv, compact: boolean): Paragraph[] {
-  const gap = compact ? 40 : 80;
+function sectionParas(
+  cv: StructuredCv,
+  id: BodySectionId,
+  compact: boolean,
+  accent?: string,
+  textColor?: string,
+): Paragraph[] {
   const out: Paragraph[] = [];
+  const hSize = compact ? 22 : 24;
+  const bSize = compact ? 18 : 20;
+  const ink = textColor;
 
-  if (cv.summary) {
-    out.push(heading("Professional Summary", compact ? 22 : 24));
+  if (id === "summary") {
+    if (!cv.summary) return out;
+    out.push(heading(labelFor(id), hSize, accent));
     out.push(
       new Paragraph({
-        spacing: { after: gap },
-        children: [new TextRun({ text: cv.summary, size: compact ? 18 : 20, font: "Calibri" })],
+        spacing: { after: compact ? 40 : 80 },
+        children: [new TextRun({ text: cv.summary, size: bSize, font: "Calibri", color: ink?.replace("#", "") })],
       }),
     );
+    return out;
   }
 
-  if (cv.skills.length) {
-    out.push(heading("Skills", compact ? 22 : 24));
-    out.push(body(cv.skills.join(" · "), { size: compact ? 18 : 20 }));
+  if (isListSection(id)) {
+    const text = listText(cv, id);
+    if (!text) return out;
+    out.push(heading(labelFor(id), hSize, accent));
+    out.push(body(text, { size: bSize, color: ink }));
+    return out;
   }
 
-  if (cv.experience.length) {
-    out.push(heading("Experience", compact ? 22 : 24));
+  if (id === "experience") {
+    if (!cv.experience.length) return out;
+    out.push(heading(labelFor(id), hSize, accent));
     for (const job of cv.experience) {
-      const titleLine = [job.title, job.company].filter(Boolean).join(" — ");
+      out.push(
+        body([job.title, job.company].filter(Boolean).join(" — "), { bold: true, size: bSize, color: ink }),
+      );
       const dates = [job.start, job.end].filter(Boolean).join(" – ");
-      out.push(body(titleLine, { bold: true, size: compact ? 18 : 20 }));
       if (dates || job.location) {
-        out.push(body([dates, job.location].filter(Boolean).join(" · "), { size: compact ? 17 : 18 }));
+        out.push(body([dates, job.location].filter(Boolean).join(" · "), { size: compact ? 17 : 18, color: ink }));
       }
-      for (const b of job.bullets) out.push(bullet(b));
+      for (const b of job.bullets) out.push(bullet(b, ink));
     }
+    return out;
   }
 
-  if (cv.education.length) {
-    out.push(heading("Education", compact ? 22 : 24));
+  if (id === "education") {
+    if (!cv.education.length) return out;
+    out.push(heading(labelFor(id), hSize, accent));
     for (const ed of cv.education) {
-      out.push(body([ed.degree, ed.school].filter(Boolean).join(" — "), { bold: true }));
-      if (ed.year || ed.details) out.push(body([ed.year, ed.details].filter(Boolean).join(" · ")));
+      out.push(body([ed.degree, ed.school].filter(Boolean).join(" — "), { bold: true, color: ink }));
+      if (ed.year || ed.details) out.push(body([ed.year, ed.details].filter(Boolean).join(" · "), { color: ink }));
     }
+    return out;
   }
 
-  if (cv.projects.length) {
-    out.push(heading("Projects", compact ? 22 : 24));
+  if (id === "projects") {
+    if (!cv.projects.length) return out;
+    out.push(heading(labelFor(id), hSize, accent));
     for (const p of cv.projects) {
-      out.push(body(p.name, { bold: true }));
-      if (p.description) out.push(body(p.description));
-      for (const b of p.bullets || []) out.push(bullet(b));
+      out.push(body(p.name, { bold: true, color: ink }));
+      if (p.description) out.push(body(p.description, { color: ink }));
+      for (const b of p.bullets || []) out.push(bullet(b, ink));
     }
-  }
-
-  if (cv.certifications.length) {
-    out.push(heading("Certifications", compact ? 22 : 24));
-    out.push(body(cv.certifications.join(" · ")));
+    return out;
   }
 
   return out;
 }
 
-function headerParas(cv: StructuredCv, accent = false, color = "1A4F7A"): Paragraph[] {
+function sectionsParas(
+  cv: StructuredCv,
+  ids: BodySectionId[],
+  compact: boolean,
+  accent?: string,
+  textColor?: string,
+): Paragraph[] {
+  return ids.flatMap((id) => sectionParas(cv, id, compact, accent, textColor));
+}
+
+function headerParas(
+  cv: StructuredCv,
+  opts?: { accent?: boolean; color?: string; align?: (typeof AlignmentType)[keyof typeof AlignmentType] },
+): Paragraph[] {
+  const align = opts?.align ?? AlignmentType.CENTER;
   return [
     new Paragraph({
-      alignment: AlignmentType.CENTER,
+      alignment: align,
       spacing: { after: 60 },
       children: [
         new TextRun({
           text: cv.personal.fullName || "Resume",
           bold: true,
-          size: accent ? 36 : 32,
+          size: opts?.accent ? 36 : 32,
           font: "Calibri",
-          color: accent ? color.replace("#", "") : "111111",
+          color: opts?.accent ? (opts.color || "1A4F7A").replace("#", "") : "111111",
         }),
       ],
     }),
     new Paragraph({
-      alignment: AlignmentType.CENTER,
+      alignment: align,
       spacing: { after: 160 },
       children: [new TextRun({ text: contactLine(cv), size: 18, font: "Calibri", color: "444444" })],
     }),
   ];
 }
 
-function cellParas(paras: Paragraph[]): TableCell {
+function cellParas(
+  paras: Paragraph[],
+  widthPct: number,
+  opts?: { fill?: string },
+): TableCell {
   return new TableCell({
     borders: {
       top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
@@ -142,68 +190,63 @@ function cellParas(paras: Paragraph[]): TableCell {
       left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
       right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
     },
-    width: { size: 50, type: WidthType.PERCENTAGE },
+    width: { size: widthPct, type: WidthType.PERCENTAGE },
+    verticalAlign: VerticalAlign.TOP,
+    shading: opts?.fill
+      ? { type: ShadingType.CLEAR, fill: opts.fill.replace("#", "") }
+      : undefined,
     children: paras.length ? paras : [new Paragraph({ children: [] })],
   });
 }
 
-function sidebarDoc(cv: StructuredCv): Document {
-  const left: Paragraph[] = [
-    body("Contact", { bold: true }),
-    body(cv.personal.email),
-    body(cv.personal.phone),
-    body(cv.personal.location),
-    ...cv.personal.links.map((l) => body(l)),
-    new Paragraph({ spacing: { before: 160 }, children: [] }),
-    body("Skills", { bold: true }),
-    ...cv.skills.map((s) => bullet(s)),
-    ...(cv.certifications.length
-      ? [new Paragraph({ spacing: { before: 120 }, children: [] }), body("Certifications", { bold: true }), body(cv.certifications.join(", "))]
-      : []),
+function sidebarDoc(cv: StructuredCv, theme: { accent: string; railBg: string; railText: string }, magazine: boolean): Document {
+  const { left, right } = columnsForExport(cv, magazine ? "magazine" : "sidebar");
+  const railColor = theme.railText.replace("#", "");
+  const railFill = magazine ? theme.accent : theme.railBg;
+  const rail: Paragraph[] = [
+    new Paragraph({
+      spacing: { after: 80 },
+      children: [
+        new TextRun({
+          text: cv.personal.fullName || "Resume",
+          bold: true,
+          size: 28,
+          font: "Calibri",
+          color: railColor,
+        }),
+      ],
+    }),
+    ...(cv.personal.email ? [body(cv.personal.email, { color: railColor })] : []),
+    ...(cv.personal.phone ? [body(cv.personal.phone, { color: railColor })] : []),
+    ...(cv.personal.location ? [body(cv.personal.location, { color: railColor })] : []),
+    ...cv.personal.links.map((l) => body(l, { color: railColor })),
+    new Paragraph({ spacing: { before: 120 }, children: [] }),
+    ...sectionsParas(cv, left, false, theme.railText, theme.railText),
   ];
-
-  const right: Paragraph[] = [];
-  if (cv.summary) {
-    right.push(heading("Summary"));
-    right.push(body(cv.summary));
-  }
-  if (cv.experience.length) {
-    right.push(heading("Experience"));
-    for (const job of cv.experience) {
-      right.push(body([job.title, job.company].filter(Boolean).join(" — "), { bold: true }));
-      right.push(body([job.start, job.end].filter(Boolean).join(" – ")));
-      for (const b of job.bullets) right.push(bullet(b));
-    }
-  }
-  if (cv.education.length) {
-    right.push(heading("Education"));
-    for (const ed of cv.education) {
-      right.push(body([ed.degree, ed.school].filter(Boolean).join(" — "), { bold: true }));
-      if (ed.year) right.push(body(ed.year));
-    }
-  }
-  if (cv.projects.length) {
-    right.push(heading("Projects"));
-    for (const p of cv.projects) {
-      right.push(body(p.name, { bold: true }));
-      if (p.description) right.push(body(p.description));
-    }
-  }
 
   return new Document({
     sections: [
       {
         properties: {
-          page: { margin: { top: 540, bottom: 540, left: 540, right: 540 } },
+          page: { margin: { top: 0, bottom: 0, left: 0, right: 0 } },
         },
         children: [
-          ...headerParas(cv),
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
-            columnWidths: [3500, 6500],
+            columnWidths: magazine ? [2800, 7200] : [3400, 6600],
             rows: [
               new TableRow({
-                children: [cellParas(left), cellParas(right)],
+                children: [
+                  cellParas(rail, magazine ? 28 : 34, { fill: railFill }),
+                  cellParas(
+                    [
+                      new Paragraph({ spacing: { before: 200 }, children: [] }),
+                      ...sectionsParas(cv, right, false, theme.accent),
+                    ],
+                    magazine ? 72 : 66,
+                    { fill: "FFFFFF" },
+                  ),
+                ],
               }),
             ],
           }),
@@ -213,45 +256,8 @@ function sidebarDoc(cv: StructuredCv): Document {
   });
 }
 
-function splitDoc(cv: StructuredCv): Document {
-  const left: Paragraph[] = [];
-  if (cv.skills.length) {
-    left.push(heading("Skills"));
-    left.push(body(cv.skills.join(" · ")));
-  }
-  if (cv.education.length) {
-    left.push(heading("Education"));
-    for (const ed of cv.education) {
-      left.push(body([ed.degree, ed.school].filter(Boolean).join(" — "), { bold: true }));
-      if (ed.year) left.push(body(ed.year));
-    }
-  }
-  if (cv.certifications.length) {
-    left.push(heading("Certifications"));
-    left.push(body(cv.certifications.join(" · ")));
-  }
-
-  const right: Paragraph[] = [];
-  if (cv.summary) {
-    right.push(heading("Summary"));
-    right.push(body(cv.summary));
-  }
-  if (cv.experience.length) {
-    right.push(heading("Experience"));
-    for (const job of cv.experience) {
-      right.push(body([job.title, job.company].filter(Boolean).join(" — "), { bold: true }));
-      right.push(body([job.start, job.end].filter(Boolean).join(" – ")));
-      for (const b of job.bullets) right.push(bullet(b));
-    }
-  }
-  if (cv.projects.length) {
-    right.push(heading("Projects"));
-    for (const p of cv.projects) {
-      right.push(body(p.name, { bold: true }));
-      if (p.description) right.push(body(p.description));
-    }
-  }
-
+function splitDoc(cv: StructuredCv, accent: string, kind: "folio" | "aurora"): Document {
+  const { left, right } = columnsForExport(cv, kind);
   return new Document({
     sections: [
       {
@@ -259,11 +265,18 @@ function splitDoc(cv: StructuredCv): Document {
           page: { margin: { top: 540, bottom: 540, left: 540, right: 540 } },
         },
         children: [
-          ...headerParas(cv, true),
+          ...headerParas(cv, { accent: true, color: accent }),
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
-            columnWidths: [4500, 5500],
-            rows: [new TableRow({ children: [cellParas(left), cellParas(right)] })],
+            columnWidths: [5000, 5000],
+            rows: [
+              new TableRow({
+                children: [
+                  cellParas(sectionsParas(cv, left, false, accent), 50),
+                  cellParas(sectionsParas(cv, right, false, accent), 50),
+                ],
+              }),
+            ],
           }),
         ],
       },
@@ -271,33 +284,48 @@ function splitDoc(cv: StructuredCv): Document {
   });
 }
 
-export async function buildDocx(cv: StructuredCv, templateId: TemplateId): Promise<Buffer> {
-  const theme = getTheme(templateId);
+export async function buildDocx(
+  cv: StructuredCv,
+  templateId: TemplateId,
+  colorThemeId?: string | null,
+  customThemes?: CustomColorPalette[] | null,
+): Promise<Buffer> {
+  const theme = resolveTheme(templateId, colorThemeId, customThemes);
+  const mode = exportModeFromKind(theme.kind);
+  const compact = theme.kind === "compact";
   let doc: Document;
-  if (theme.kind === "sidebar" || theme.kind === "magazine") doc = sidebarDoc(cv);
-  else if (theme.kind === "banner" || theme.kind === "aurora") doc = splitDoc(cv);
-  else {
+
+  if (mode === "sidebar") {
+    doc = sidebarDoc(cv, theme, theme.kind === "magazine");
+  } else if (mode === "banner") {
+    doc = splitDoc(cv, theme.accent, theme.kind === "aurora" ? "aurora" : "folio");
+  } else {
     doc = new Document({
       sections: [
         {
           properties: {
             page: {
               margin: {
-                top: theme.kind === "compact" ? 420 : 720,
-                bottom: theme.kind === "compact" ? 420 : 720,
-                left: theme.kind === "compact" ? 540 : 720,
-                right: theme.kind === "compact" ? 540 : 720,
+                top: compact ? 420 : 720,
+                bottom: compact ? 420 : 720,
+                left: compact ? 540 : theme.kind === "frame" ? 640 : 720,
+                right: compact ? 540 : theme.kind === "frame" ? 640 : 720,
               },
             },
           },
           children: [
-            ...headerParas(cv, true, theme.accent),
-            ...sectionBlocks(cv, theme.kind === "compact"),
+            ...headerParas(cv, {
+              accent: true,
+              color: theme.accent,
+              align: theme.kind === "executive" ? AlignmentType.LEFT : AlignmentType.CENTER,
+            }),
+            ...sectionsParas(cv, orderedSections(cv), compact, theme.accent),
           ],
         },
       ],
     });
   }
+
   const ab = await Packer.toBuffer(doc);
   return Buffer.from(ab);
 }

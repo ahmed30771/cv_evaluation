@@ -59,7 +59,8 @@ DEPTH REQUIREMENTS (minimums — exceed when useful):
 - findings improvements: at least 3 rewritten/example bullets or concrete rewrites
 
 Be specific and actionable. Quote or paraphrase real CV content. Do not invent employers, degrees, or metrics that are not in the CV.
-For "improvement" items, include an example rewrite when relevant (e.g. weak bullet → stronger bullet with metrics).`;
+For "improvement" items, include an example rewrite when relevant (e.g. weak bullet → stronger bullet with metrics).
+SCORING CONSISTENCY: Use a calibrated rubric. Nearly identical CVs must receive nearly identical scores (within a few points). Prefer stable, evidence-based scoring over creative variation.`;
 
 const REWRITE_SYSTEM_PROMPT = `You rewrite CVs into clean, ATS-friendly structured resumes that RESOLVE the evaluation findings.
 
@@ -72,7 +73,8 @@ CRITICAL SECURITY RULES:
 
 PRIMARY GOAL:
 - Every item in <<<FINDINGS>>> marked issue, missing, recommendation, or improvement MUST be addressed in the rewritten resume wherever possible without inventing facts.
-- Prefer concrete fixes: stronger bullets, clearer summary, better skills list, ATS-friendly wording, filled gaps that the source already supports.
+- Prefer concrete fixes that raise ATS/experience/skills/content/formatting quality: standard section headers, clear contact lines, discrete skills list, action-verb bullets with measurable impact (only when the source supports numbers), strong professional summary, education/projects when present in the source.
+- Prefer measurable bullets when the source implies impact; do not fabricate numbers.
 - If a finding cannot be fixed without inventing facts, improve the nearest related content as far as honesty allows.
 
 Return ONLY valid JSON with this exact shape:
@@ -234,24 +236,29 @@ async function chatCompletion(opts: {
   system: string;
   user: string;
   maxTokens?: number;
+  temperature?: number;
+  seed?: number;
 }): Promise<string> {
+  const body: Record<string, unknown> = {
+    model: opts.model,
+    temperature: opts.temperature ?? 0.2,
+    max_tokens: opts.maxTokens ?? 4500,
+    messages: [
+      { role: "system", content: opts.system },
+      { role: "user", content: opts.user },
+    ],
+  };
+  if (typeof opts.seed === "number") body.seed = opts.seed;
+
   const resp = await fetch(`${opts.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${opts.apiKey}`,
       "Content-Type": "application/json",
       "HTTP-Referer": "https://cv-evaluation.vercel.app",
-      "X-Title": "CV Evaluation Platform",
+      "X-Title": "Offerquay Resume Studio",
     },
-    body: JSON.stringify({
-      model: opts.model,
-      temperature: 0.2,
-      max_tokens: opts.maxTokens ?? 4500,
-      messages: [
-        { role: "system", content: opts.system },
-        { role: "user", content: opts.user },
-      ],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!resp.ok) {
@@ -272,6 +279,7 @@ async function callModel(
   apiKey: string,
   model: string,
   userContent: string,
+  opts?: { temperature?: number; seed?: number },
 ): Promise<{ scores: Scores; findings: Finding[] }> {
   const content = await chatCompletion({
     baseUrl,
@@ -279,22 +287,37 @@ async function callModel(
     model,
     system: SYSTEM_PROMPT,
     user: userContent,
+    temperature: opts?.temperature ?? 0,
+    seed: opts?.seed,
   });
   return normalizeResult(parseJsonContent(content) as Record<string, unknown>);
 }
 
+function seedFromText(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h) % 2147483647;
+}
+
 export async function evaluateCv(rawText: string): Promise<{ scores: Scores; findings: Finding[] }> {
   const { apiKey, primary, baseUrl } = openRouterConfig();
+  const clipped = rawText.slice(0, 60000);
+  const seed = seedFromText(clipped);
 
   const userContent =
-    "Evaluate the CV between the markers. Return a DETAILED JSON analysis only (summary + section_analysis + many findings).\n\n" +
-    `<<<CV_START>>>\n${rawText.slice(0, 60000)}\n<<<CV_END>>>`;
+    "Evaluate the CV between the markers. Return a DETAILED JSON analysis only (summary + section_analysis + many findings).\n" +
+    "Score consistently using the rubric; do not invent random score swings.\n\n" +
+    `<<<CV_START>>>\n${clipped}\n<<<CV_END>>>`;
 
   let lastError: unknown;
+  // Prefer the primary model for score stability; only fall back on hard failures.
   for (const model of modelCandidates(primary)) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return await callModel(baseUrl, apiKey, model, userContent);
+        return await callModel(baseUrl, apiKey, model, userContent, { temperature: 0, seed });
       } catch (err) {
         lastError = err;
         const msg = String(err);

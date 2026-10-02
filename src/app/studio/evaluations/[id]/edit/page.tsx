@@ -23,6 +23,7 @@ import {
   type PdfOverlayLine,
   type Report,
 } from "@/lib/api";
+import { studioPath } from "@/lib/site";
 
 const PdfCvCanvas = dynamic(() => import("@/components/PdfCvCanvas"), { ssr: false });
 
@@ -420,7 +421,7 @@ export default function CvEditorPage() {
             Could not open editor
           </h1>
           <p style={{ color: "var(--muted)" }}>{loadError}</p>
-          <Link className="btn btn-primary" href={`/evaluations/${id}`}>
+          <Link className="btn btn-primary" href={studioPath(`/evaluations/${id}`)}>
             Back to report
           </Link>
         </section>
@@ -442,7 +443,7 @@ export default function CvEditorPage() {
     <div className="canva-studio">
       <header className="canva-topbar">
         <div className="canva-topbar-left">
-          <Link href={`/evaluations/${id}`} className="canva-back">
+          <Link href={studioPath(`/evaluations/${id}`)} className="canva-back">
             ← Report
           </Link>
           <div className="canva-file">

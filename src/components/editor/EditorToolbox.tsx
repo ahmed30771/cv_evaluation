@@ -1,101 +1,70 @@
 "use client";
 
 import { scoreToGrade } from "@/lib/score-grade";
-import type { EditorPanel } from "@/components/editor/EditorPanels";
 
 export function EditorToolbox({
-  active,
-  onOpen,
-  grade,
   canUndo,
   canRedo,
   onUndo,
   onRedo,
   saveLabel,
+  zoom,
+  onZoom,
 }: {
-  active: EditorPanel;
-  onOpen: (panel: EditorPanel) => void;
-  grade: string | null;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
   saveLabel: string;
+  zoom: number;
+  onZoom: (next: number) => void;
 }) {
-  const toggle = (panel: NonNullable<EditorPanel>) => onOpen(active === panel ? null : panel);
-
   return (
-    <div className="editor-toolbox">
-      <div className="editor-toolbox-left">
+    <div className="editor-topbar-tools">
+      {saveLabel ? <span className="toolbox-save">{saveLabel}</span> : null}
+      <div className="toolbox-zoom" role="group" aria-label="Zoom">
         <button
           type="button"
-          className={`toolbox-btn toolbox-btn--fix ${active === "fix" ? "is-active" : ""}`}
-          onClick={() => toggle("fix")}
+          className="toolbox-icon-btn"
+          title="Zoom out"
+          aria-label="Zoom out"
+          disabled={zoom <= 0.35}
+          onClick={() => onZoom(Math.max(0.35, Math.round((zoom - 0.1) * 10) / 10))}
         >
-          <span className="toolbox-ico" aria-hidden>
-            ✓
-          </span>
-          Fix Resume
-          {grade ? <em className="toolbox-grade">{grade}</em> : null}
+          −
         </button>
+        <span className="toolbox-zoom-label">{Math.round(zoom * 100)}%</span>
         <button
           type="button"
-          className={`toolbox-btn ${active === "tailor" ? "is-active" : ""}`}
-          onClick={() => toggle("tailor")}
+          className="toolbox-icon-btn"
+          title="Zoom in"
+          aria-label="Zoom in"
+          disabled={zoom >= 1.5}
+          onClick={() => onZoom(Math.min(1.5, Math.round((zoom + 0.1) * 10) / 10))}
         >
-          <span className="toolbox-ico" aria-hidden>
-            ATS
-          </span>
-          Check & Tailor
-        </button>
-        <span className="toolbox-sep" aria-hidden />
-        <button
-          type="button"
-          className={`toolbox-icon-btn ${active === "rearrange" ? "is-active" : ""}`}
-          title="Rearrange"
-          aria-label="Rearrange"
-          onClick={() => toggle("rearrange")}
-        >
-          ↕
-        </button>
-        <button
-          type="button"
-          className={`toolbox-icon-btn ${active === "templates" ? "is-active" : ""}`}
-          title="Templates"
-          aria-label="Templates"
-          onClick={() => toggle("templates")}
-        >
-          ▦
-        </button>
-        <button
-          type="button"
-          className={`toolbox-icon-btn ${active === "design" ? "is-active" : ""}`}
-          title="Design"
-          aria-label="Design"
-          onClick={() => toggle("design")}
-        >
-          ◑
+          +
         </button>
       </div>
-      <div className="editor-toolbox-right">
-        <span className="toolbox-save">{saveLabel}</span>
-        <button type="button" className="toolbox-icon-btn" title="Undo" aria-label="Undo" disabled={!canUndo} onClick={onUndo}>
-          ↶
-        </button>
-        <button type="button" className="toolbox-icon-btn" title="Redo" aria-label="Redo" disabled={!canRedo} onClick={onRedo}>
-          ↷
-        </button>
-        <button
-          type="button"
-          className={`toolbox-btn ${active === "history" ? "is-active" : ""}`}
-          onClick={() => toggle("history")}
-        >
-          <span className="toolbox-ico" aria-hidden>
-            ◷
-          </span>
-          History
-        </button>
-      </div>
+      <button
+        type="button"
+        className="toolbox-icon-btn toolbox-undo-redo"
+        title="Undo"
+        aria-label="Undo"
+        disabled={!canUndo}
+        onClick={onUndo}
+      >
+        ↶
+      </button>
+      <button
+        type="button"
+        className="toolbox-icon-btn toolbox-undo-redo"
+        title="Redo"
+        aria-label="Redo"
+        disabled={!canRedo}
+        onClick={onRedo}
+      >
+        ↷
+      </button>
     </div>
   );
 }

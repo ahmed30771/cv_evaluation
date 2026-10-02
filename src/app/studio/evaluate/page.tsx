@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createEvaluation } from "@/lib/api";
 import { BuilderChrome } from "@/components/BuilderChrome";
+import { studioPath } from "@/lib/site";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED = [".pdf", ".docx"];
@@ -41,7 +42,7 @@ export default function EvaluatePage() {
     setError(null);
     try {
       const { id } = await createEvaluation(file);
-      router.push(`/evaluations/${id}`);
+      router.push(studioPath(`/evaluations/${id}`));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
       setLoading(false);
@@ -50,23 +51,22 @@ export default function EvaluatePage() {
 
   return (
     <BuilderChrome
-      subtitle="Evaluate"
+      subtitle="Score"
       actions={
-        <Link href="/build" className="btn btn-primary" style={{ padding: "0.45rem 0.9rem", fontSize: "0.92rem" }}>
+        <Link href={studioPath("/build")} className="btn btn-primary btn-compact">
           Build resume
         </Link>
       }
     >
-      <main className="container" style={{ paddingTop: "2.5rem", paddingBottom: "4rem", maxWidth: 720 }}>
-        <h1 className="display" style={{ margin: "0 0 0.5rem", fontSize: "clamp(1.8rem, 4vw, 2.4rem)" }}>
-          Score your CV
-        </h1>
-        <p style={{ margin: "0 0 1.5rem", color: "var(--muted)" }}>
+      <main className="sq-page">
+        <p className="sq-kicker sq-rise">Evaluate</p>
+        <h1 className="sq-title sq-rise">Score your CV</h1>
+        <p className="sq-lead sq-rise">
           Get ATS and content scores, then open the builder to generate a fixed resume.
         </p>
 
         <div
-          className={`dropzone ${dragActive ? "active" : ""}`}
+          className={`sq-dropzone ${dragActive ? "is-active" : ""} sq-rise-delay`}
           onDragEnter={(e) => {
             e.preventDefault();
             setDragActive(true);
@@ -85,12 +85,12 @@ export default function EvaluatePage() {
             onPick(e.dataTransfer.files?.[0] ?? null);
           }}
         >
-          <p style={{ margin: 0, fontWeight: 600 }}>Drag & drop your CV here</p>
-          <p style={{ margin: "0.4rem 0 1rem", color: "var(--muted)" }}>PDF or DOCX · max 5 MB</p>
+          <p className="sq-dropzone-title">Drop your CV here</p>
+          <p className="sq-dropzone-meta">PDF or DOCX · max 5 MB</p>
           <button type="button" className="btn btn-ghost" onClick={() => inputRef.current?.click()}>
             Browse files
           </button>
-          {file && <p style={{ margin: "0.75rem 0 0", fontWeight: 600 }}>{file.name}</p>}
+          {file && <p className="sq-file-name">{file.name}</p>}
           <input
             ref={inputRef}
             type="file"
@@ -101,12 +101,12 @@ export default function EvaluatePage() {
         </div>
 
         {error && (
-          <p role="alert" style={{ color: "var(--bad)", marginTop: "0.85rem" }}>
+          <p role="alert" className="sq-alert">
             {error}
           </p>
         )}
 
-        <div style={{ marginTop: "1.1rem" }}>
+        <div className="sq-actions">
           <button type="button" className="btn btn-primary" disabled={!file || loading} onClick={() => void onSubmit()}>
             {loading ? "Evaluating…" : "Evaluate CV"}
           </button>

@@ -9,6 +9,7 @@ import {
 } from "@/server/cv-model";
 import { rewriteCv } from "@/server/openrouter";
 import type { ResumeMeta } from "@/server/resumes";
+import { normalizeCustomThemes } from "@/lib/templates";
 
 export type CvRewriteRow = {
   evaluation_id: string;
@@ -21,10 +22,17 @@ export type CvRewriteRow = {
 function normalizeMeta(raw: unknown): ResumeMeta {
   if (!raw || typeof raw !== "object") return {};
   const m = raw as Record<string, unknown>;
+  const custom_themes = normalizeCustomThemes(m.custom_themes);
+  const colorRaw =
+    typeof m.color_theme === "string" && m.color_theme.trim()
+      ? m.color_theme.trim().slice(0, 48)
+      : undefined;
   return {
     target_role: typeof m.target_role === "string" ? m.target_role.slice(0, 120) : "",
     preference: m.preference === "visual" ? "visual" : m.preference === "ats" ? "ats" : undefined,
     source: m.source === "blank" || m.source === "upload" ? m.source : undefined,
+    color_theme: colorRaw,
+    custom_themes: custom_themes.length ? custom_themes : undefined,
   };
 }
 

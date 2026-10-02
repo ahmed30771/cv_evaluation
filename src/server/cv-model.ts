@@ -111,6 +111,8 @@ export function normalizeStructuredCv(input: unknown): StructuredCv {
       phone: asString(personalRaw.phone, 60),
       location: asString(personalRaw.location, 120),
       links: asStringArray(personalRaw.links, 8, 200),
+      photo: normalizePhoto(personalRaw.photo),
+      hrefs: normalizePersonalHrefs(personalRaw.hrefs, asStringArray(personalRaw.links, 8, 200).length),
     },
     summary: asString(raw.summary, 2500),
     skills: asStringArray(raw.skills, 40, 80),
@@ -125,6 +127,39 @@ export function normalizeStructuredCv(input: unknown): StructuredCv {
       ? (raw.sectionOrder.filter(isBodySectionId) as BodySectionId[])
       : undefined,
     sectionColumns: normalizeSectionColumns(raw.sectionColumns),
+  };
+}
+
+function normalizePhoto(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const v = value.trim();
+  if (!v) return undefined;
+  // Allow compressed data URLs only (keep draft JSON bounded).
+  if (!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(v)) return undefined;
+  if (v.length > 450_000) return undefined;
+  return v;
+}
+
+function normalizePersonalHrefs(
+  value: unknown,
+  linkCount: number,
+): StructuredCv["personal"]["hrefs"] {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const email = typeof raw.email === "string" ? raw.email.trim().slice(0, 400) : "";
+  const phone = typeof raw.phone === "string" ? raw.phone.trim().slice(0, 400) : "";
+  const location = typeof raw.location === "string" ? raw.location.trim().slice(0, 400) : "";
+  const linksRaw = Array.isArray(raw.links)
+    ? raw.links.map((x) => (typeof x === "string" ? x.trim().slice(0, 400) : "")).slice(0, 8)
+    : [];
+  while (linksRaw.length < linkCount) linksRaw.push("");
+  const links = linksRaw.slice(0, Math.max(linkCount, linksRaw.length));
+  if (!email && !phone && !location && !links.some(Boolean)) return undefined;
+  return {
+    ...(email ? { email } : {}),
+    ...(phone ? { phone } : {}),
+    ...(location ? { location } : {}),
+    ...(links.some(Boolean) ? { links } : {}),
   };
 }
 

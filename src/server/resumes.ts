@@ -7,6 +7,18 @@ export type ResumeMeta = {
   target_role?: string;
   preference?: "ats" | "visual";
   source?: "blank" | "upload";
+  /** Design-rail color palette id (built-in or custom_*) */
+  color_theme?: string;
+  /** User-created color themes for this resume */
+  custom_themes?: Array<{
+    id: string;
+    label: string;
+    accent: string;
+    accentSoft: string;
+    headerText: string;
+    railBg: string;
+    railText: string;
+  }>;
 };
 
 export async function createBlankResume(opts?: {

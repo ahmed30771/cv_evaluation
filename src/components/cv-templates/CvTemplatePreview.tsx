@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { StructuredCv, TemplateId } from "@/lib/cv-types";
-import { getTheme, type TemplateTheme } from "@/lib/templates";
+import { auroraHeaderGradient, resolveTheme, type CustomColorPalette, type TemplateTheme } from "@/lib/templates";
 
 function contactBits(cv: StructuredCv): string {
   return [cv.personal.email, cv.personal.phone, cv.personal.location, ...cv.personal.links]
@@ -116,7 +116,7 @@ function JobBlock({
         <div style={{ fontWeight: 700, color: accent || "#111", ...wrapText, flex: "1 1 12rem" }}>
           {[job.title, job.company].filter(Boolean).join(" — ")}
         </div>
-        <div style={{ color: "#64748b", fontSize: "0.76rem", ...wrapText, flex: "0 1 auto" }}>
+        <div style={{ color: "#334155", fontSize: "0.76rem", ...wrapText, flex: "0 1 auto" }}>
           {[job.start, job.end].filter(Boolean).join(" – ")}
           {job.location ? ` · ${job.location}` : ""}
         </div>
@@ -178,7 +178,7 @@ function ClassicBody({ cv, theme, compact }: { cv: StructuredCv; theme: Template
             borderRadius: 2,
           }}
         />
-        <div style={{ color: "#64748b", fontSize: compact ? "0.72rem" : "0.8rem", ...wrapText }}>{contactBits(cv)}</div>
+        <div style={{ color: "#334155", fontSize: compact ? "0.72rem" : "0.8rem", ...wrapText }}>{contactBits(cv)}</div>
       </header>
       {!!cv.summary && (
         <Section title="Professional Summary" accent={theme.accent}>
@@ -202,7 +202,7 @@ function ClassicBody({ cv, theme, compact }: { cv: StructuredCv; theme: Template
           {cv.education.map((ed, i) => (
             <div key={i} style={{ marginBottom: "0.35rem" }}>
               <div style={{ fontWeight: 700 }}>{[ed.degree, ed.school].filter(Boolean).join(" — ")}</div>
-              <div style={{ color: "#64748b", fontSize: "0.78rem" }}>{[ed.year, ed.details].filter(Boolean).join(" · ")}</div>
+              <div style={{ color: "#334155", fontSize: "0.78rem" }}>{[ed.year, ed.details].filter(Boolean).join(" · ")}</div>
             </div>
           ))}
         </Section>
@@ -289,7 +289,7 @@ function ExecutiveBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }
           {cv.projects.map((p, i) => (
             <div key={i} style={{ marginBottom: "0.35rem" }}>
               <strong>{p.name}</strong>
-              {!!p.description && <span style={{ color: "#64748b" }}> — {p.description}</span>}
+              {!!p.description && <span style={{ color: "#334155" }}> — {p.description}</span>}
             </div>
           ))}
         </Section>
@@ -309,7 +309,7 @@ function TimelineBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme })
     <>
       <header style={{ marginBottom: "1rem" }}>
         <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#0f172a", ...wrapText }}>{cv.personal.fullName || "Your Name"}</div>
-        <div style={{ color: "#64748b", fontSize: "0.8rem", marginTop: 4, ...wrapText }}>{contactBits(cv)}</div>
+        <div style={{ color: "#334155", fontSize: "0.8rem", marginTop: 4, ...wrapText }}>{contactBits(cv)}</div>
         {!!cv.summary && <p style={{ margin: "0.65rem 0 0", color: "#334155", ...wrapText }}>{cv.summary}</p>}
       </header>
       {!!cv.skills.length && (
@@ -472,7 +472,7 @@ function SidebarBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) 
             {cv.education.map((ed, i) => (
               <div key={i} style={{ marginBottom: "0.35rem", ...wrapText }}>
                 <div style={{ fontWeight: 700 }}>{[ed.degree, ed.school].filter(Boolean).join(" — ")}</div>
-                {!!ed.year && <div style={{ color: "#64748b", fontSize: "0.78rem" }}>{ed.year}</div>}
+                {!!ed.year && <div style={{ color: "#334155", fontSize: "0.78rem" }}>{ed.year}</div>}
               </div>
             ))}
           </Section>
@@ -536,7 +536,7 @@ function FrameBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
       />
       <header style={{ textAlign: "center", marginBottom: "0.85rem" }}>
         <div style={{ fontSize: "1.55rem", fontWeight: 800, color: theme.accent }}>{cv.personal.fullName || "Your Name"}</div>
-        <div style={{ color: "#64748b", fontSize: "0.8rem", marginTop: 4, ...wrapText }}>{contactBits(cv)}</div>
+        <div style={{ color: "#334155", fontSize: "0.8rem", marginTop: 4, ...wrapText }}>{contactBits(cv)}</div>
       </header>
       {!!cv.summary && (
         <Section title="Summary" accent={theme.accent}>
@@ -668,38 +668,58 @@ function MagazineBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme })
   );
 }
 
-/** 7 — Banner (Ocean / Sunset) */
-function BannerBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
+/** 7 — Ocean Folio: top bar + split header + two-column body */
+function FolioBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
   return shell({}, (
     <>
+      <div style={{ height: 10, background: theme.accent }} />
       <header
         style={{
-          background: `linear-gradient(115deg, ${theme.accent} 0%, ${theme.accent}bb 55%, ${theme.accentSoft} 160%)`,
-          color: theme.headerText,
-          padding: "1.4rem 1.45rem 1.2rem",
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)",
+          gap: "0.85rem",
+          padding: "1rem 1.15rem 0.85rem",
+          borderBottom: `1px solid ${theme.accentSoft}`,
         }}
       >
-        <div style={{ fontSize: "1.55rem", fontWeight: 800 }}>{cv.personal.fullName || "Your Name"}</div>
-        <div style={{ opacity: 0.92, fontSize: "0.8rem", marginTop: 6, ...wrapText }}>{contactBits(cv)}</div>
+        <div style={{ fontSize: "1.4rem", fontWeight: 800, color: theme.accent, ...wrapText }}>
+          {cv.personal.fullName || "Your Name"}
+        </div>
+        <ContactStack parts={contactParts(cv)} style={{ fontSize: "0.72rem", color: "#1e293b" }} />
       </header>
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "minmax(0, 36%) minmax(0, 1fr)",
           gap: "0.85rem",
-          padding: "1rem",
-          background: theme.accentSoft,
-          fontSize: "0.85rem",
+          padding: "0.9rem 1rem",
+          fontSize: "0.84rem",
         }}
       >
-        <div style={{ background: "#fff", borderRadius: 12, padding: "0.9rem", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", minWidth: 0, overflow: "hidden" }}>
+        <div style={{ minWidth: 0 }}>
           {!!cv.summary && (
             <Section title="Summary" accent={theme.accent} style={{ marginTop: 0 }}>
-              <p style={{ margin: 0 }}>{cv.summary}</p>
+              <p style={{ margin: 0, ...wrapText }}>{cv.summary}</p>
             </Section>
           )}
+          {!!cv.skills.length && (
+            <Section title="Skills" accent={theme.accent}>
+              <SkillChips skills={cv.skills} accent={theme.accent} soft={theme.accentSoft} />
+            </Section>
+          )}
+          {!!cv.education.length && (
+            <Section title="Education" accent={theme.accent}>
+              {cv.education.map((ed, i) => (
+                <div key={i} style={{ marginBottom: "0.3rem", ...wrapText }}>
+                  <strong>{ed.degree}</strong> · {ed.school}
+                </div>
+              ))}
+            </Section>
+          )}
+        </div>
+        <div style={{ minWidth: 0 }}>
           {!!cv.experience.length && (
-            <Section title="Experience" accent={theme.accent}>
+            <Section title="Experience" accent={theme.accent} style={{ marginTop: 0 }}>
               {cv.experience.map((job, i) => (
                 <JobBlock key={i} job={job} dateRight />
               ))}
@@ -708,7 +728,7 @@ function BannerBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
           {!!cv.projects.length && (
             <Section title="Projects" accent={theme.accent}>
               {cv.projects.map((p, i) => (
-                <div key={i} style={{ marginBottom: "0.35rem" }}>
+                <div key={i} style={{ marginBottom: "0.35rem", ...wrapText }}>
                   <div style={{ fontWeight: 700 }}>{p.name}</div>
                   {!!p.description && <p style={{ margin: "0.1rem 0 0" }}>{p.description}</p>}
                 </div>
@@ -716,6 +736,144 @@ function BannerBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
             </Section>
           )}
         </div>
+      </div>
+    </>
+  ));
+}
+
+/** 7b — Forest Ribbon: thin left stripe + open column */
+function RibbonBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
+  return shell(
+    { display: "flex", fontSize: "0.86rem", minHeight: 420 },
+    <>
+      <div style={{ width: 12, flexShrink: 0, background: theme.accent }} />
+      <div style={{ flex: 1, minWidth: 0, padding: "1.1rem 1.15rem" }}>
+        <header style={{ marginBottom: "0.75rem" }}>
+          <div style={{ fontSize: "1.45rem", fontWeight: 800, color: theme.accent, ...wrapText }}>
+            {cv.personal.fullName || "Your Name"}
+          </div>
+          <div style={{ height: 2, width: 64, background: theme.accent, margin: "0.35rem 0 0.4rem" }} />
+          <div style={{ fontSize: "0.78rem", color: "#475569", ...wrapText }}>{contactBits(cv)}</div>
+        </header>
+        {!!cv.summary && (
+          <Section title="Summary" accent={theme.accent} style={{ marginTop: 0 }}>
+            <p style={{ margin: 0, ...wrapText }}>{cv.summary}</p>
+          </Section>
+        )}
+        {!!cv.skills.length && (
+          <Section title="Skills" accent={theme.accent}>
+            <SkillChips skills={cv.skills} accent={theme.accent} soft={theme.accentSoft} />
+          </Section>
+        )}
+        {!!cv.experience.length && (
+          <Section title="Experience" accent={theme.accent}>
+            {cv.experience.map((job, i) => (
+              <JobBlock key={i} job={job} dateRight />
+            ))}
+          </Section>
+        )}
+        {!!cv.education.length && (
+          <Section title="Education" accent={theme.accent}>
+            {cv.education.map((ed, i) => (
+              <div key={i} style={{ marginBottom: "0.3rem", ...wrapText }}>
+                {[ed.degree, ed.school, ed.year].filter(Boolean).join(" · ")}
+              </div>
+            ))}
+          </Section>
+        )}
+        {!!cv.projects.length && (
+          <Section title="Projects" accent={theme.accent}>
+            {cv.projects.map((p, i) => (
+              <div key={i} style={{ marginBottom: "0.3rem", ...wrapText }}>
+                <strong>{p.name}</strong>
+                {!!p.description && <span> — {p.description}</span>}
+              </div>
+            ))}
+          </Section>
+        )}
+      </div>
+    </>,
+  );
+}
+
+/** 7c — Sunset Crest: ornamental centered header */
+function CrestBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
+  return shell({}, (
+    <>
+      <header
+        style={{
+          textAlign: "center",
+          padding: "1.25rem 1.2rem 1rem",
+          background: theme.accentSoft,
+        }}
+      >
+        <div style={{ width: 44, height: 4, background: theme.accent, margin: "0 auto 0.55rem", borderRadius: 999 }} />
+        <div style={{ fontSize: "1.5rem", fontWeight: 850, color: theme.accent, ...wrapText }}>
+          {cv.personal.fullName || "Your Name"}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            margin: "0.45rem auto",
+            maxWidth: 240,
+          }}
+        >
+          <span style={{ flex: 1, height: 1, background: theme.accent, opacity: 0.5 }} />
+          <span
+            style={{
+              fontSize: "0.58rem",
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: theme.accent,
+              fontWeight: 750,
+            }}
+          >
+            Resume
+          </span>
+          <span style={{ flex: 1, height: 1, background: theme.accent, opacity: 0.5 }} />
+        </div>
+        <div style={{ fontSize: "0.76rem", color: "#7c2d12", ...wrapText }}>{contactBits(cv)}</div>
+      </header>
+      <div style={{ padding: "0.95rem 1.15rem", fontSize: "0.85rem" }}>
+        {!!cv.summary && (
+          <Section title="Summary" accent={theme.accent} style={{ marginTop: 0 }}>
+            <p style={{ margin: 0, ...wrapText }}>{cv.summary}</p>
+          </Section>
+        )}
+        {!!cv.skills.length && (
+          <Section title="Skills" accent={theme.accent}>
+            <SkillChips skills={cv.skills} accent={theme.accent} soft={theme.accentSoft} />
+          </Section>
+        )}
+        {!!cv.experience.length && (
+          <Section title="Experience" accent={theme.accent}>
+            {cv.experience.map((job, i) => (
+              <JobBlock key={i} job={job} dateRight />
+            ))}
+          </Section>
+        )}
+        {!!cv.education.length && (
+          <Section title="Education" accent={theme.accent}>
+            {cv.education.map((ed, i) => (
+              <div key={i} style={{ marginBottom: "0.3rem", ...wrapText }}>
+                {[ed.degree, ed.school, ed.year].filter(Boolean).join(" · ")}
+              </div>
+            ))}
+          </Section>
+        )}
+        {!!cv.projects.length && (
+          <Section title="Projects" accent={theme.accent}>
+            {cv.projects.map((p, i) => (
+              <div key={i} style={{ marginBottom: "0.3rem", ...wrapText }}>
+                <strong>{p.name}</strong>
+                {!!p.description && <span> — {p.description}</span>}
+              </div>
+            ))}
+          </Section>
+        )}
       </div>
     </>
   ));
@@ -757,7 +915,7 @@ function CardsBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
         <div style={{ fontSize: "1.55rem", fontWeight: 850, color: theme.accent, ...wrapText }}>
           {cv.personal.fullName || "Your Name"}
         </div>
-        <div style={{ color: "#64748b", fontSize: "0.8rem", marginTop: 4, ...wrapText }}>{contactBits(cv)}</div>
+        <div style={{ color: "#334155", fontSize: "0.8rem", marginTop: 4, ...wrapText }}>{contactBits(cv)}</div>
       </header>
       {!!cv.summary && card("About", <p style={{ margin: 0, ...wrapText }}>{cv.summary}</p>)}
       {!!cv.skills.length &&
@@ -807,12 +965,12 @@ function AuroraBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
       <header
         style={{
           padding: "1.5rem 1.4rem 1.25rem",
-          background: `linear-gradient(125deg, #a5f3fc 0%, #c4b5fd 45%, #fbcfe8 100%)`,
-          color: theme.headerText,
+          background: auroraHeaderGradient(theme.accent, theme.accentSoft),
+          color: "#0f172a",
         }}
       >
-        <div style={{ fontSize: "1.6rem", fontWeight: 850 }}>{cv.personal.fullName || "Your Name"}</div>
-        <div style={{ fontSize: "0.8rem", marginTop: 6, opacity: 0.85, ...wrapText }}>{contactBits(cv)}</div>
+        <div style={{ fontSize: "1.6rem", fontWeight: 850, color: theme.accent }}>{cv.personal.fullName || "Your Name"}</div>
+        <div style={{ fontSize: "0.8rem", marginTop: 6, color: "#1e293b", ...wrapText }}>{contactBits(cv)}</div>
       </header>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.35fr)", gap: "1rem", padding: "1.15rem 1.25rem", fontSize: "0.86rem" }}>
         <div style={{ minWidth: 0 }}>
@@ -831,7 +989,7 @@ function AuroraBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
               {cv.education.map((ed, i) => (
                 <div key={i} style={{ marginBottom: "0.3rem", ...wrapText }}>
                   <strong>{ed.degree}</strong>
-                  <div style={{ color: "#64748b", fontSize: "0.78rem" }}>
+                  <div style={{ color: "#334155", fontSize: "0.78rem" }}>
                     {ed.school}
                     {ed.year ? ` · ${ed.year}` : ""}
                   </div>
@@ -869,8 +1027,206 @@ function AuroraBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
   ));
 }
 
-export function CvTemplatePreview({ cv, templateId }: { cv: StructuredCv; templateId: TemplateId }) {
-  const theme = getTheme(templateId);
+/** Optional photo placeholder for template thumbs / previews */
+function PreviewPhoto({
+  photo,
+  size,
+  accent,
+  shape = "circle",
+}: {
+  photo?: string;
+  size: number;
+  accent: string;
+  shape?: "circle" | "rounded";
+}) {
+  const radius = shape === "circle" ? "999px" : 12;
+  if (photo) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={photo}
+        alt=""
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius,
+          objectFit: "cover",
+          border: `2px solid ${accent}`,
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        border: `2px dashed ${accent}88`,
+        background: `${accent}14`,
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+function PortraitBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
+  return shell({}, (
+    <>
+      <header
+        style={{
+          display: "flex",
+          gap: "0.85rem",
+          alignItems: "center",
+          padding: "1.1rem 1.15rem 0.9rem",
+          borderBottom: `3px solid ${theme.accent}`,
+        }}
+      >
+        <PreviewPhoto photo={cv.personal.photo} size={72} accent={theme.accent} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: "1.35rem", fontWeight: 850, color: theme.accent, ...wrapText }}>
+            {cv.personal.fullName || "Your Name"}
+          </div>
+          <div style={{ fontSize: "0.74rem", color: "#334155", marginTop: 4, ...wrapText }}>{contactBits(cv)}</div>
+        </div>
+      </header>
+      <div style={{ padding: "0.9rem 1.15rem", fontSize: "0.84rem" }}>
+        {!!cv.summary && (
+          <Section title="Summary" accent={theme.accent} style={{ marginTop: 0 }}>
+            <p style={{ margin: 0, ...wrapText }}>{cv.summary}</p>
+          </Section>
+        )}
+        {!!cv.experience.length && (
+          <Section title="Experience" accent={theme.accent}>
+            {cv.experience.slice(0, 2).map((job, i) => (
+              <JobBlock key={i} job={job} dateRight />
+            ))}
+          </Section>
+        )}
+        {!!cv.skills.length && (
+          <Section title="Skills" accent={theme.accent}>
+            <SkillChips skills={cv.skills} accent={theme.accent} soft={theme.accentSoft} />
+          </Section>
+        )}
+      </div>
+    </>
+  ));
+}
+
+function SpotlightBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
+  return shell({}, (
+    <>
+      <header
+        style={{
+          display: "flex",
+          gap: "0.85rem",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "1.15rem 1.15rem",
+          background: `linear-gradient(120deg, ${theme.accent} 0%, ${theme.accent}bb 100%)`,
+          color: "#fff",
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: "1.4rem", fontWeight: 850, ...wrapText }}>{cv.personal.fullName || "Your Name"}</div>
+          <div style={{ fontSize: "0.72rem", opacity: 0.92, marginTop: 4, ...wrapText }}>{contactBits(cv)}</div>
+        </div>
+        <PreviewPhoto photo={cv.personal.photo} size={78} accent="#fff" shape="rounded" />
+      </header>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.2fr)",
+          gap: "0.75rem",
+          padding: "0.9rem 1rem",
+          fontSize: "0.82rem",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          {!!cv.summary && (
+            <Section title="About" accent={theme.accent} style={{ marginTop: 0 }}>
+              <p style={{ margin: 0, ...wrapText }}>{cv.summary}</p>
+            </Section>
+          )}
+          {!!cv.skills.length && (
+            <Section title="Skills" accent={theme.accent}>
+              <SkillChips skills={cv.skills} accent={theme.accent} soft={theme.accentSoft} />
+            </Section>
+          )}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          {!!cv.experience.length && (
+            <Section title="Experience" accent={theme.accent} style={{ marginTop: 0 }}>
+              {cv.experience.slice(0, 2).map((job, i) => (
+                <JobBlock key={i} job={job} dateRight />
+              ))}
+            </Section>
+          )}
+        </div>
+      </div>
+    </>
+  ));
+}
+
+function MedallionBody({ cv, theme }: { cv: StructuredCv; theme: TemplateTheme }) {
+  return shell({}, (
+    <>
+      <header
+        style={{
+          textAlign: "center",
+          padding: "1.15rem 1.1rem 0.95rem",
+          background: theme.accentSoft,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <PreviewPhoto photo={cv.personal.photo} size={80} accent={theme.accent} />
+        <div style={{ width: "100%" }}>
+          <div style={{ fontSize: "1.4rem", fontWeight: 850, color: theme.accent, ...wrapText }}>
+            {cv.personal.fullName || "Your Name"}
+          </div>
+          <div style={{ width: 48, height: 3, background: theme.accent, margin: "0.4rem auto", borderRadius: 999 }} />
+          <div style={{ fontSize: "0.74rem", color: "#334155", ...wrapText }}>{contactBits(cv)}</div>
+        </div>
+      </header>
+      <div style={{ padding: "0.9rem 1.15rem", fontSize: "0.84rem" }}>
+        {!!cv.summary && (
+          <Section title="Summary" accent={theme.accent} style={{ marginTop: 0 }}>
+            <p style={{ margin: 0, ...wrapText }}>{cv.summary}</p>
+          </Section>
+        )}
+        {!!cv.experience.length && (
+          <Section title="Experience" accent={theme.accent}>
+            {cv.experience.slice(0, 2).map((job, i) => (
+              <JobBlock key={i} job={job} dateRight />
+            ))}
+          </Section>
+        )}
+        {!!cv.skills.length && (
+          <Section title="Skills" accent={theme.accent}>
+            <SkillChips skills={cv.skills} accent={theme.accent} soft={theme.accentSoft} />
+          </Section>
+        )}
+      </div>
+    </>
+  ));
+}
+
+export function CvTemplatePreview({
+  cv,
+  templateId,
+  colorThemeId,
+  customThemes,
+}: {
+  cv: StructuredCv;
+  templateId: TemplateId;
+  colorThemeId?: string | null;
+  customThemes?: CustomColorPalette[] | null;
+}) {
+  const theme = resolveTheme(templateId, colorThemeId, customThemes);
   switch (theme.kind) {
     case "compact":
       return <ClassicBody cv={cv} theme={theme} compact />;
@@ -884,12 +1240,22 @@ export function CvTemplatePreview({ cv, templateId }: { cv: StructuredCv; templa
       return <FrameBody cv={cv} theme={theme} />;
     case "magazine":
       return <MagazineBody cv={cv} theme={theme} />;
-    case "banner":
-      return <BannerBody cv={cv} theme={theme} />;
+    case "folio":
+      return <FolioBody cv={cv} theme={theme} />;
+    case "ribbon":
+      return <RibbonBody cv={cv} theme={theme} />;
     case "cards":
       return <CardsBody cv={cv} theme={theme} />;
+    case "crest":
+      return <CrestBody cv={cv} theme={theme} />;
     case "aurora":
       return <AuroraBody cv={cv} theme={theme} />;
+    case "portrait":
+      return <PortraitBody cv={cv} theme={theme} />;
+    case "spotlight":
+      return <SpotlightBody cv={cv} theme={theme} />;
+    case "medallion":
+      return <MedallionBody cv={cv} theme={theme} />;
     default:
       return <ClassicBody cv={cv} theme={theme} />;
   }
@@ -898,6 +1264,8 @@ export function CvTemplatePreview({ cv, templateId }: { cv: StructuredCv; templa
 export function TemplateThumb({
   cv,
   templateId,
+  colorThemeId,
+  customThemes,
   active,
   disabled,
   onClick,
@@ -906,13 +1274,15 @@ export function TemplateThumb({
 }: {
   cv: StructuredCv;
   templateId: TemplateId;
+  colorThemeId?: string | null;
+  customThemes?: CustomColorPalette[] | null;
   active?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   label: string;
   badge?: string;
 }) {
-  const theme = getTheme(templateId);
+  const theme = resolveTheme(templateId, colorThemeId, customThemes);
   return (
     <button
       type="button"
@@ -923,7 +1293,12 @@ export function TemplateThumb({
     >
       <div className="template-mini-frame">
         <div className="template-mini-scale">
-          <CvTemplatePreview cv={cv} templateId={templateId} />
+          <CvTemplatePreview
+            cv={cv}
+            templateId={templateId}
+            colorThemeId={colorThemeId}
+            customThemes={customThemes}
+          />
         </div>
         {active ? <span className="template-mini-selected">Selected</span> : null}
       </div>

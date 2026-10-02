@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { getEvaluation, getReport, type EvaluationStatus, type Finding, type Report } from "@/lib/api";
+import { studioPath } from "@/lib/site";
 
 const STATUS_LABEL: Record<string, string> = {
   uploaded: "Starting…",
@@ -22,11 +23,11 @@ function scoreBand(value: number): string {
 
 function ScoreRow({ label, value }: { label: string; value: number }) {
   return (
-    <div style={{ marginBottom: "0.85rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.35rem", gap: "1rem" }}>
-        <span style={{ fontWeight: 600 }}>{label}</span>
+    <div className="sq-score-row">
+      <div className="sq-score-row-head">
+        <span>{label}</span>
         <span>
-          {value}/100 <span style={{ color: "var(--muted)", fontWeight: 500 }}>({scoreBand(value)})</span>
+          {value}/100 <em>({scoreBand(value)})</em>
         </span>
       </div>
       <div className="score-bar" aria-hidden>
@@ -46,47 +47,18 @@ function FindingsGroup({
   emptyHint?: string;
 }) {
   return (
-    <section style={{ marginTop: "1.5rem" }}>
-      <h3 className="display" style={{ margin: "0 0 0.75rem", fontSize: "1.25rem" }}>
+    <section>
+      <h3 className="sq-findings-title">
         {title}
-        <span style={{ marginLeft: "0.5rem", fontSize: "0.95rem", color: "var(--muted)", fontFamily: "var(--font-sans)" }}>
-          ({items.length})
-        </span>
+        <span>({items.length})</span>
       </h3>
-      <div className="panel">
-        {!items.length && (
-          <p style={{ margin: 0, color: "var(--muted)" }}>{emptyHint || "Nothing flagged in this category."}</p>
-        )}
+      <div className="sq-surface">
+        {!items.length && <p style={{ margin: 0, color: "var(--muted)" }}>{emptyHint || "Nothing flagged in this category."}</p>}
         {items.map((f, idx) => (
           <article key={`${f.type}-${idx}`} className={`finding ${f.type === "section_analysis" ? "recommendation" : f.type}`}>
-            <div
-              style={{
-                display: "flex",
-                gap: "0.5rem",
-                flexWrap: "wrap",
-                alignItems: "center",
-                fontSize: "0.75rem",
-                fontWeight: 700,
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
-                color: "var(--muted)",
-              }}
-            >
+            <div className="sq-finding-meta">
               <span>{f.type.replace("_", " ")}</span>
-              {f.section && (
-                <span
-                  style={{
-                    border: "1px solid var(--line)",
-                    borderRadius: 999,
-                    padding: "0.1rem 0.45rem",
-                    textTransform: "none",
-                    letterSpacing: 0,
-                    fontWeight: 600,
-                  }}
-                >
-                  {f.section}
-                </span>
-              )}
+              {f.section && <span className="sq-finding-tag">{f.section}</span>}
               {f.severity && <span>{f.severity} severity</span>}
             </div>
             <h4 style={{ margin: "0.35rem 0 0.25rem" }}>{f.title}</h4>
@@ -151,13 +123,11 @@ export default function EvaluationPage() {
 
   if (error && !report) {
     return (
-      <main className="container" style={{ padding: "4rem 0" }}>
-        <div className="panel fade-up">
-          <h1 className="display" style={{ marginTop: 0 }}>
-            We couldn’t evaluate this CV
-          </h1>
-          <p style={{ color: "var(--muted)" }}>{error}</p>
-          <Link className="btn btn-primary" href="/">
+      <main className="sq-page">
+        <div className="sq-surface sq-rise">
+          <h1 className="sq-title">We couldn’t evaluate this CV</h1>
+          <p className="sq-lead">{error}</p>
+          <Link className="btn btn-primary" href={studioPath("/evaluate")}>
             Upload a different CV
           </Link>
         </div>
@@ -168,31 +138,23 @@ export default function EvaluationPage() {
   if (!report) {
     const label = STATUS_LABEL[status?.status || "uploaded"] || "Working…";
     return (
-      <main className="container" style={{ padding: "4rem 0" }}>
-        <div className="panel fade-up" aria-live="polite">
-          <p style={{ margin: 0, color: "var(--muted)" }}>Evaluating</p>
-          <h1 className="display" style={{ margin: "0.4rem 0 1rem", fontSize: "1.8rem" }}>
+      <main className="sq-page">
+        <div className="sq-surface sq-rise" aria-live="polite">
+          <p className="sq-kicker">Evaluating</p>
+          <h1 className="sq-title" style={{ fontSize: "1.8rem" }}>
             {status?.original_filename || "Your CV"}
           </h1>
-          <p style={{ fontWeight: 600 }}>{label}</p>
-          <p style={{ color: "var(--muted)" }}>This usually takes under a minute.</p>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1rem" }}>
+          <p style={{ fontWeight: 650, margin: "0 0 0.35rem" }}>{label}</p>
+          <p className="sq-lead" style={{ marginBottom: "1.1rem" }}>
+            This usually takes under a minute.
+          </p>
+          <div className="sq-chip-row">
             {["uploaded", "extracting", "evaluating"].map((step) => {
               const current = status?.status || "uploaded";
               const order = ["uploaded", "extracting", "evaluating", "completed"];
               const active = order.indexOf(current) >= order.indexOf(step);
               return (
-                <span
-                  key={step}
-                  style={{
-                    padding: "0.35rem 0.7rem",
-                    borderRadius: 999,
-                    border: "1px solid var(--line)",
-                    background: active ? "rgba(26,79,122,0.1)" : "transparent",
-                    fontSize: "0.85rem",
-                    textTransform: "capitalize",
-                  }}
-                >
+                <span key={step} className={`sq-chip ${active ? "is-on" : ""}`}>
                   {step}
                 </span>
               );
@@ -207,23 +169,21 @@ export default function EvaluationPage() {
   const executive = grouped.summary[0];
 
   return (
-    <main className="container" style={{ padding: "3rem 0 4rem" }}>
-      <header className="fade-up" style={{ marginBottom: "1.5rem" }}>
-        <p style={{ margin: 0, color: "var(--muted)" }}>CV Evaluation Report</p>
-        <h1 className="display" style={{ margin: "0.35rem 0", fontSize: "clamp(1.8rem, 4vw, 2.4rem)" }}>
-          {report.original_filename}
-        </h1>
+    <main className="sq-page">
+      <header className="sq-rise" style={{ marginBottom: "1.5rem" }}>
+        <p className="sq-kicker">CV evaluation report</p>
+        <h1 className="sq-title">{report.original_filename}</h1>
       </header>
 
-      <section className="panel fade-up" style={{ marginBottom: "1.25rem" }}>
-        <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+      <section className="sq-surface sq-rise" style={{ marginBottom: "1.1rem" }}>
+        <div className="sq-score-hero">
           <div>
             <div style={{ color: "var(--muted)", fontWeight: 600 }}>Overall score</div>
-            <div className="display" style={{ fontSize: "3.4rem", lineHeight: 1, color: "var(--brand-deep)" }}>
+            <div className="sq-score-value">
               {scores.overall}
-              <span style={{ fontSize: "1.2rem", color: "var(--muted)" }}>/100</span>
+              <span>/100</span>
             </div>
-            <div style={{ marginTop: "0.35rem", fontWeight: 600 }}>{scoreBand(scores.overall)}</div>
+            <div className="sq-score-band">{scoreBand(scores.overall)}</div>
           </div>
           {report.processing_ms != null && (
             <div style={{ color: "var(--muted)" }}>Processed in {(report.processing_ms / 1000).toFixed(1)}s</div>
@@ -232,16 +192,16 @@ export default function EvaluationPage() {
       </section>
 
       {executive && (
-        <section className="panel fade-up" style={{ marginBottom: "1.25rem" }}>
-          <h2 className="display" style={{ margin: "0 0 0.75rem", fontSize: "1.35rem" }}>
+        <section className="sq-surface sq-rise" style={{ marginBottom: "1.1rem" }}>
+          <h2 className="sq-findings-title" style={{ marginTop: 0 }}>
             Executive summary
           </h2>
-          <p style={{ margin: 0, lineHeight: 1.6, color: "var(--ink)", whiteSpace: "pre-wrap" }}>{executive.detail}</p>
+          <p style={{ margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{executive.detail}</p>
         </section>
       )}
 
-      <section className="panel fade-up-delay" style={{ marginBottom: "1.25rem" }}>
-        <h2 className="display" style={{ margin: "0 0 1rem", fontSize: "1.35rem" }}>
+      <section className="sq-surface sq-rise-delay" style={{ marginBottom: "1.1rem" }}>
+        <h2 className="sq-findings-title" style={{ marginTop: 0 }}>
           Category scores
         </h2>
         <ScoreRow label="ATS" value={scores.ats} />
@@ -252,21 +212,13 @@ export default function EvaluationPage() {
       </section>
 
       {!!report.sections_detected?.length && (
-        <section className="panel" style={{ marginBottom: "0.5rem" }}>
-          <h2 className="display" style={{ margin: "0 0 0.75rem", fontSize: "1.2rem" }}>
+        <section className="sq-surface" style={{ marginBottom: "0.5rem" }}>
+          <h2 className="sq-findings-title" style={{ marginTop: 0, fontSize: "1.15rem" }}>
             Sections detected
           </h2>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="sq-chip-row">
             {report.sections_detected.map((s) => (
-              <span
-                key={s}
-                style={{
-                  border: "1px solid var(--line)",
-                  borderRadius: 999,
-                  padding: "0.3rem 0.7rem",
-                  fontSize: "0.9rem",
-                }}
-              >
+              <span key={s} className="sq-chip">
                 {s.replaceAll("_", " ")}
               </span>
             ))}
@@ -289,14 +241,14 @@ export default function EvaluationPage() {
         emptyHint="No rewrite examples were generated."
       />
 
-      <div style={{ marginTop: "2rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-        <Link className="btn btn-primary" href={`/build/${id}`}>
+      <div className="sq-actions" style={{ marginTop: "2rem" }}>
+        <Link className="btn btn-primary" href={studioPath(`/build/${id}`)}>
           Fix my CV / Open builder
         </Link>
-        <Link className="btn btn-ghost" href="/">
-          Home
+        <Link className="btn btn-ghost" href={studioPath("/")}>
+          Studio home
         </Link>
-        <Link className="btn btn-ghost" href="/evaluate">
+        <Link className="btn btn-ghost" href={studioPath("/evaluate")}>
           Evaluate another
         </Link>
       </div>

@@ -11,7 +11,7 @@ import {
 import { ensureSchema, getSql } from "./db";
 import { detectInjection, neutralizeInjectionSpans } from "./integrity";
 import { evaluateCv } from "./openrouter";
-import { applyChecklistCaps, checklistSignals } from "./scoring";
+import { finalizeScores, hashScoreContent, type Scores } from "./scoring";
 import { parseSections } from "./extract";
 
 function safeError(err: unknown): string {
@@ -26,6 +26,25 @@ function safeError(err: unknown): string {
   return `Re-evaluation failed: ${msg.slice(0, 220)}`;
 }
 
+async function loadPreviousScores(evaluationId: string): Promise<Scores | null> {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT overall, ats, experience, skills, content, formatting
+    FROM evaluation_scores
+    WHERE evaluation_id = ${evaluationId}
+    LIMIT 1
+  `;
+  if (!rows[0]) return null;
+  return {
+    overall: Number(rows[0].overall),
+    ats: Number(rows[0].ats),
+    experience: Number(rows[0].experience),
+    skills: Number(rows[0].skills),
+    content: Number(rows[0].content),
+    formatting: Number(rows[0].formatting),
+  };
+}
+
 export async function reevaluateFromDraft(
   evaluationId: string,
   opts?: { sections?: unknown; overlays?: unknown; raw_text?: string },
@@ -35,7 +54,7 @@ export async function reevaluateFromDraft(
   const started = Date.now();
 
   const evaluations = await sql`
-    SELECT id, status FROM evaluations WHERE id = ${evaluationId} LIMIT 1
+    SELECT id, status, score_content_hash FROM evaluations WHERE id = ${evaluationId} LIMIT 1
   `;
   if (!evaluations[0]) throw new Error("Evaluation not found");
 
@@ -58,6 +77,25 @@ export async function reevaluateFromDraft(
     throw new Error("Draft is too short to re-evaluate. Add more CV content first.");
   }
 
+  const contentHash = hashScoreContent(rawText);
+  const previousHash = evaluations[0].score_content_hash
+    ? String(evaluations[0].score_content_hash)
+    : null;
+  const previousScores = await loadPreviousScores(evaluationId);
+
+  // Identical CV text → identical score (no LLM re-roll).
+  if (previousHash && previousHash === contentHash && previousScores) {
+    await sql`
+      UPDATE evaluations
+      SET status = 'completed',
+          completed_at = now(),
+          processing_ms = ${Date.now() - started},
+          error_message = NULL
+      WHERE id = ${evaluationId}
+    `;
+    return { overall: previousScores.overall };
+  }
+
   await sql`
     UPDATE evaluations SET status = 'evaluating', error_message = NULL WHERE id = ${evaluationId}
   `;
@@ -67,8 +105,13 @@ export async function reevaluateFromDraft(
     const textForLlm = injectionHit ? neutralizeInjectionSpans(rawText) : rawText;
     const parsedSections = parseSections(rawText);
     const result = await evaluateCv(textForLlm);
-    const signals = checklistSignals(rawText, parsedSections);
-    const scores = applyChecklistCaps(result.scores, signals, injectionHit);
+    const scores = finalizeScores({
+      llm: result.scores,
+      rawText,
+      sections: parsedSections,
+      injectionHit,
+      previous: previousScores,
+    });
     const findings = [...result.findings];
 
     if (injectionHit) {
@@ -116,8 +159,9 @@ export async function reevaluateFromDraft(
       `;
     }
 
-    await sql.query(`UPDATE cv_extractions SET sections = $1::jsonb WHERE evaluation_id = $2`, [
-      JSON.stringify(normalizeDraftSections(sections)),
+    await sql.query(`UPDATE cv_extractions SET sections = $1::jsonb, raw_text = $2 WHERE evaluation_id = $3`, [
+      JSON.stringify(parsedSections),
+      rawText,
       evaluationId,
     ]);
 
@@ -128,6 +172,7 @@ export async function reevaluateFromDraft(
           completed_at = now(),
           processing_ms = ${processingMs},
           injection_heuristic_hit = ${injectionHit},
+          score_content_hash = ${contentHash},
           error_message = NULL
       WHERE id = ${evaluationId}
     `;

@@ -41,6 +41,12 @@ export async function ensureSchema() {
     /* ignore */
   }
 
+  try {
+    await sql`ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS score_content_hash TEXT`;
+  } catch {
+    /* ignore */
+  }
+
   await sql`
     CREATE TABLE IF NOT EXISTS cv_extractions (
       id UUID PRIMARY KEY,

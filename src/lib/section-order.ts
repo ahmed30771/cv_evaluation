@@ -186,8 +186,8 @@ export function setSectionOrder(cv: StructuredCv, order: BodySectionId[]): Struc
 }
 
 export function layoutSplitFromKind(kind: string): LayoutSplit {
-  if (kind === "aurora") return "aurora";
-  if (kind === "banner") return "banner";
+  if (kind === "aurora" || kind === "spotlight") return "aurora";
+  if (kind === "folio") return "banner";
   if (kind === "sidebar" || kind === "magazine") return "sidebar";
   return "single";
 }

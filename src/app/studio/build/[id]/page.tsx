@@ -4,19 +4,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { DirectEditCvPreview } from "@/components/cv-templates/DirectEditCvPreview";
+import { DownloadMenu } from "@/components/editor/DownloadMenu";
 import { EditorLeftRail } from "@/components/editor/EditorLeftRail";
 import {
   DesignPanel,
   FixResumePanel,
+  FormatPanel,
   HistoryPanel,
-  RearrangePanel,
   TailorPanel,
   TemplatesPanel,
   type EditorPanel,
 } from "@/components/editor/EditorPanels";
 import { EditorToolbox, gradeFromOverall } from "@/components/editor/EditorToolbox";
 import {
-  exportCvUrl,
   generateRewrite,
   getReport,
   getRewrite,
@@ -28,9 +28,8 @@ import {
   type TemplateId,
 } from "@/lib/api";
 import { structuredCvToRawText } from "@/lib/cv-text";
-import { isBodySectionId } from "@/lib/cv-types";
-import { layoutSplitFromKind, moveSectionColumn, moveSectionOrder, placeSectionRelative } from "@/lib/section-order";
-import { getTheme } from "@/lib/templates";
+import { isColorThemeId, isCustomThemeId, LIVE_CUSTOM_THEME_ID, normalizeCustomThemes, type CustomColorPalette } from "@/lib/templates";
+import { mainHref, studioPath } from "@/lib/site";
 
 type Snapshot = {
   id: string;
@@ -44,14 +43,6 @@ function cloneCv(cv: StructuredCv): StructuredCv {
   return JSON.parse(JSON.stringify(cv)) as StructuredCv;
 }
 
-function moveItem<T>(arr: T[], from: number, to: number): T[] {
-  if (from === to || from < 0 || to < 0 || from >= arr.length || to >= arr.length) return arr;
-  const next = [...arr];
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item);
-  return next;
-}
-
 export default function BuildEditorPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -59,12 +50,13 @@ export default function BuildEditorPage() {
   const [content, setContent] = useState<StructuredCv | null>(null);
   const [templateId, setTemplateId] = useState<TemplateId>("classic");
   const [preference, setPreference] = useState<"ats" | "visual">("ats");
+  const [colorThemeId, setColorThemeId] = useState<string | null>(null);
+  const [customThemes, setCustomThemes] = useState<CustomColorPalette[]>([]);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [regenBusy, setRegenBusy] = useState(false);
   const [panel, setPanel] = useState<EditorPanel>(null);
-
   const [report, setReport] = useState<Report | null>(null);
   const [fixBusy, setFixBusy] = useState(false);
   const [fixError, setFixError] = useState<string | null>(null);
@@ -82,11 +74,14 @@ export default function BuildEditorPage() {
   const [past, setPast] = useState<Snapshot[]>([]);
   const [future, setFuture] = useState<Snapshot[]>([]);
   const [historyLog, setHistoryLog] = useState<Snapshot[]>([]);
+  const [zoom, setZoom] = useState(1);
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = useRef<StructuredCv | null>(null);
   const templateRef = useRef<TemplateId>("classic");
   const skipHistory = useRef(false);
+  const canvasColRef = useRef<HTMLDivElement | null>(null);
+  const zoomTouchedRef = useRef(false);
 
   useEffect(() => {
     contentRef.current = content;
@@ -94,6 +89,45 @@ export default function BuildEditorPage() {
   useEffect(() => {
     templateRef.current = templateId;
   }, [templateId]);
+
+  useEffect(() => {
+    const el = canvasColRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      zoomTouchedRef.current = true;
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom((z) => Math.min(1.5, Math.max(0.35, Math.round((z + delta) * 10) / 10)));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [content]);
+
+  useEffect(() => {
+    if (loading) return;
+    const el = canvasColRef.current;
+    if (!el) return;
+    const fit = () => {
+      if (zoomTouchedRef.current) return;
+      const w = el.clientWidth;
+      if (w >= 900) {
+        setZoom(1);
+        return;
+      }
+      const next = Math.max(0.35, Math.min(1, Math.round(((w - 28) / 794) * 20) / 20));
+      setZoom(next);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [loading]);
+
+  function handleZoom(next: number) {
+    zoomTouchedRef.current = true;
+    setZoom(next);
+  }
 
   const persist = useCallback(
     async (nextContent: StructuredCv, nextTemplate: TemplateId) => {
@@ -118,6 +152,16 @@ export default function BuildEditorPage() {
     },
     [persist],
   );
+
+  const flushSave = useCallback(async () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    const cv = contentRef.current;
+    if (!cv) return;
+    await persist(cv, templateRef.current);
+  }, [persist]);
 
   const pushHistory = useCallback((label: string, cv: StructuredCv, tpl: TemplateId) => {
     const snap: Snapshot = {
@@ -148,6 +192,12 @@ export default function BuildEditorPage() {
         if (row.meta?.preference === "visual" || row.meta?.preference === "ats") {
           setPreference(row.meta.preference);
         }
+        if (isColorThemeId(row.meta?.color_theme) || isCustomThemeId(row.meta?.color_theme)) {
+          setColorThemeId(row.meta!.color_theme!);
+        } else {
+          setColorThemeId(null);
+        }
+        setCustomThemes(normalizeCustomThemes(row.meta?.custom_themes));
         setLoading(false);
         try {
           const r = await getReport(id);
@@ -352,13 +402,38 @@ export default function BuildEditorPage() {
     }
   }
 
+  async function onColorTheme(next: string | null) {
+    setColorThemeId(next);
+    try {
+      await updateRewrite(id, { meta: { color_theme: next ?? "" } });
+    } catch {
+      /* non-blocking */
+    }
+  }
+
+  async function onCustomThemesChange(next: CustomColorPalette[]) {
+    const hasLive = next.some((t) => t.id === LIVE_CUSTOM_THEME_ID);
+    const nextThemeId = hasLive ? LIVE_CUSTOM_THEME_ID : colorThemeId;
+    setCustomThemes(next);
+    if (hasLive) setColorThemeId(LIVE_CUSTOM_THEME_ID);
+    try {
+      await updateRewrite(id, {
+        meta: {
+          custom_themes: next,
+          color_theme: nextThemeId ?? "",
+        },
+      });
+    } catch {
+      /* non-blocking */
+    }
+  }
+
   if (loading) {
     return (
       <div className="editor-page">
         <header className="editor-topbar">
-          <Link href="/" className="editor-brand">
-            <span className="builder-mark" aria-hidden />
-            <strong>Bluexech Resume</strong>
+          <Link href={studioPath("/")} className="editor-brand">
+            Offer<em>quay</em>
           </Link>
         </header>
         <main className="editor-loading">Loading resume…</main>
@@ -370,14 +445,13 @@ export default function BuildEditorPage() {
     return (
       <div className="editor-page">
         <header className="editor-topbar">
-          <Link href="/" className="editor-brand">
-            <span className="builder-mark" aria-hidden />
-            <strong>Bluexech Resume</strong>
+          <Link href={studioPath("/")} className="editor-brand">
+            Offer<em>quay</em>
           </Link>
         </header>
         <main className="editor-loading">
           <p style={{ color: "var(--bad)" }}>{error || "Resume not found"}</p>
-          <Link href="/build" className="btn btn-primary" style={{ marginTop: "1rem" }}>
+          <Link href={studioPath("/build")} className="btn btn-primary" style={{ marginTop: "1rem" }}>
             Start over
           </Link>
         </main>
@@ -392,49 +466,45 @@ export default function BuildEditorPage() {
   return (
     <div className="editor-page">
       <header className="editor-topbar">
-        <Link href="/" className="editor-brand">
-          <span className="builder-mark" aria-hidden />
-          <strong>Bluexech Resume</strong>
+        <Link href={studioPath("/")} className="editor-brand">
+          Offer<em>quay</em>
         </Link>
+        <EditorToolbox
+          canUndo={past.length > 0}
+          canRedo={future.length > 0}
+          onUndo={onUndo}
+          onRedo={onRedo}
+          saveLabel={saveLabel}
+          zoom={zoom}
+          onZoom={handleZoom}
+        />
         <div className="editor-topbar-actions">
-          <Link href={`/evaluations/${id}`} className="btn btn-ghost" style={{ padding: "0.4rem 0.75rem", fontSize: "0.85rem" }}>
-            Report
-          </Link>
-          <a className="btn btn-ghost" style={{ padding: "0.4rem 0.75rem", fontSize: "0.85rem" }} href={exportCvUrl(id, "docx", templateId)}>
-            DOCX
+          <a href={mainHref("/")} className="btn btn-ghost btn-compact editor-topbar-main-link">
+            Main site
           </a>
-          <a className="btn btn-primary" style={{ padding: "0.4rem 0.75rem", fontSize: "0.85rem" }} href={exportCvUrl(id, "pdf", templateId)}>
-            Download PDF
-          </a>
+          <DownloadMenu id={id} templateId={templateId} onBeforeDownload={flushSave} />
         </div>
       </header>
 
-      <EditorToolbox
-        active={panel}
-        onOpen={setPanel}
-        grade={grade}
-        canUndo={past.length > 0}
-        canRedo={future.length > 0}
-        onUndo={onUndo}
-        onRedo={onRedo}
-        saveLabel={saveLabel}
-      />
+      <div className="editor-main">
+        <EditorLeftRail
+          active={panel}
+          onOpen={setPanel}
+          fixGrade={grade}
+          canUndo={past.length > 0}
+          canRedo={future.length > 0}
+          onUndo={onUndo}
+          onRedo={onRedo}
+        />
 
-      <div className="editor-workspace">
-        <EditorLeftRail id={id} templateId={templateId} onAiRewrite={() => void onRegenerate()} aiBusy={regenBusy} />
-
-        <div className="editor-canvas-col">
-          {error && (
-            <p role="alert" className="editor-inline-error">
-              {error}
-            </p>
-          )}
-          <div className="editor-canvas-hint">Click any text on the resume to edit</div>
-          <div className="editor-canvas-sheet">
-            <DirectEditCvPreview cv={content} templateId={templateId} evaluationId={id} onPatch={patch} />
-          </div>
-        </div>
-
+        {panel ? (
+          <button
+            type="button"
+            className="editor-panel-backdrop"
+            aria-label="Close panel"
+            onClick={() => setPanel(null)}
+          />
+        ) : null}
         {panel === "fix" && (
           <FixResumePanel
             report={report}
@@ -457,53 +527,43 @@ export default function BuildEditorPage() {
               applyContent(
                 {
                   ...content,
-                  skills: text.split(",").map((s) => s.trim()).filter(Boolean),
+                  skills: text
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
                 },
                 "Apply tailored skills",
               )
             }
+            rewriteBusy={regenBusy}
+            rewriteError={error}
+            onRewrite={() => void onRegenerate()}
             onClose={() => setPanel(null)}
           />
         )}
         {panel === "templates" && (
-          <TemplatesPanel cv={content} templateId={templateId} onPick={onTemplate} onClose={() => setPanel(null)} />
-        )}
-        {panel === "design" && (
-          <DesignPanel preference={preference} onPreference={(p) => void onPreference(p)} onClose={() => setPanel(null)} />
-        )}
-        {panel === "rearrange" && (
-          <RearrangePanel
+          <TemplatesPanel
             cv={content}
-            split={layoutSplitFromKind(getTheme(templateId).kind)}
-            onMoveEntry={(section, from, to) =>
-              patch((prev) => {
-                if (section === "experience") {
-                  return { ...prev, experience: moveItem(prev.experience, from, to) };
-                }
-                if (section === "education") {
-                  return { ...prev, education: moveItem(prev.education, from, to) };
-                }
-                return { ...prev, projects: moveItem(prev.projects, from, to) };
-              })
-            }
-            onMoveSection={(sectionId, direction) => {
-              if (!isBodySectionId(sectionId)) return;
-              const split = layoutSplitFromKind(getTheme(templateId).kind);
-              patch((prev) => moveSectionOrder(prev, sectionId, direction, split));
-            }}
-            onMoveColumn={(sectionId, column) => {
-              if (!isBodySectionId(sectionId)) return;
-              const split = layoutSplitFromKind(getTheme(templateId).kind);
-              patch((prev) => moveSectionColumn(prev, sectionId, column, split));
-            }}
-            onDropRelative={(draggedId, targetId, place) => {
-              if (!isBodySectionId(draggedId) || !isBodySectionId(targetId)) return;
-              const split = layoutSplitFromKind(getTheme(templateId).kind);
-              patch((prev) => placeSectionRelative(prev, draggedId, targetId, place, split));
-            }}
+            templateId={templateId}
+            preference={preference}
+            colorThemeId={colorThemeId}
+            customThemes={customThemes}
+            onPreference={(p) => void onPreference(p)}
+            onPick={onTemplate}
             onClose={() => setPanel(null)}
           />
         )}
+        {panel === "design" && (
+          <DesignPanel
+            templateId={templateId}
+            colorThemeId={colorThemeId}
+            customThemes={customThemes}
+            onColorTheme={(c) => void onColorTheme(c)}
+            onCustomThemesChange={(c) => void onCustomThemesChange(c)}
+            onClose={() => setPanel(null)}
+          />
+        )}
+        {panel === "format" && <FormatPanel onClose={() => setPanel(null)} />}
         {panel === "history" && (
           <HistoryPanel
             entries={historyLog.map((h) => ({ id: h.id, label: h.label, at: h.at }))}
@@ -511,6 +571,29 @@ export default function BuildEditorPage() {
             onClose={() => setPanel(null)}
           />
         )}
+
+        <div className="editor-main-col">
+          <div className="editor-workspace">
+            <div className="editor-canvas-col" ref={canvasColRef}>
+              {error && (
+                <p role="alert" className="editor-inline-error">
+                  {error}
+                </p>
+              )}
+              <div className="editor-canvas-sheet">
+                <DirectEditCvPreview
+                  cv={content}
+                  templateId={templateId}
+                  colorThemeId={colorThemeId}
+                  customThemes={customThemes}
+                  evaluationId={id}
+                  onPatch={patch}
+                  zoom={zoom}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

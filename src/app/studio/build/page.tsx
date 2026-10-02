@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { TEMPLATES } from "@/lib/templates";
 import { TEMPLATE_PREVIEW_SAMPLE } from "@/lib/template-preview-sample";
+import { studioPath } from "@/lib/site";
 
 type Pref = "ats" | "visual";
 
@@ -38,10 +39,10 @@ function StepDots({ step, total }: { step: number; total: number }) {
 export default function BuildWizardPage() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  /** 1 ask · 2 upload · 3 preference · 4 gallery */
   const [step, setStep] = useState(1);
   const [hasResume, setHasResume] = useState<boolean | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [role, setRole] = useState("");
   const [preference, setPreference] = useState<Pref>("ats");
   const [resumeId, setResumeId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -54,11 +55,9 @@ export default function BuildWizardPage() {
     return TEMPLATES.filter((t) => t.badge === "Visual");
   }, [preference]);
 
-  const allTemplatesOrdered = useMemo(() => {
-    const preferred = filteredTemplates;
-    const rest = TEMPLATES.filter((t) => !preferred.some((p) => p.id === t.id));
-    return [...preferred, ...rest];
-  }, [filteredTemplates]);
+  const totalSteps = hasResume === true ? 4 : 3;
+  const visibleStep =
+    step === 1 ? 1 : step === 2 ? 2 : step === 3 ? (hasResume === true ? 3 : 2) : hasResume === true ? 4 : 3;
 
   const prepareFromUpload = useCallback(async () => {
     if (!file) throw new Error("Choose a PDF or DOCX file first.");
@@ -72,33 +71,33 @@ export default function BuildWizardPage() {
       await new Promise((r) => setTimeout(r, 2000));
     }
     setStatusMsg("Building an improved resume draft…");
-    const rewrite = await generateRewrite(id);
+    await generateRewrite(id);
     await updateRewrite(id, {
-      meta: { target_role: role, preference, source: "upload" },
+      meta: { preference, source: "upload" },
       template_id: preference === "visual" ? "sidebar" : "classic",
     });
     setResumeId(id);
     return id;
-  }, [file, preference, role]);
+  }, [file, preference]);
 
   const prepareBlank = useCallback(async () => {
     setStatusMsg("Creating a blank resume…");
     const row = await createBlankResume({
-      target_role: role,
       preference,
       template_id: preference === "visual" ? "sidebar" : "classic",
     });
     setResumeId(row.id);
     return row.id;
-  }, [preference, role]);
+  }, [preference]);
 
-  async function goToGallery() {
+  async function choosePreference(next: Pref) {
+    setPreference(next);
     setError(null);
     setBusy(true);
     try {
       if (hasResume === true) await prepareFromUpload();
       else await prepareBlank();
-      setStep(5);
+      setStep(4);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start resume");
     } finally {
@@ -116,7 +115,7 @@ export default function BuildWizardPage() {
     setStatusMsg(`Opening ${meta?.label || "template"}…`);
     try {
       await updateRewrite(resumeId, { template_id: templateId });
-      router.push(`/build/${resumeId}`);
+      router.push(studioPath(`/build/${resumeId}`));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save template");
       setBusy(false);
@@ -127,15 +126,20 @@ export default function BuildWizardPage() {
 
   return (
     <BuilderChrome
-      subtitle="Builder"
+      subtitle="Build"
       actions={
-        <Link href="/evaluate" className="btn btn-ghost" style={{ padding: "0.45rem 0.9rem", fontSize: "0.92rem" }}>
+        <Link href={studioPath("/evaluate")} className="btn btn-ghost btn-compact">
           Score a CV
         </Link>
       }
     >
-      <main className="container wizard-wrap">
-        <StepDots step={step} total={5} />
+      <main className="wizard-wrap">
+        <div className="wizard-progress">
+          <p className="wizard-progress-label">
+            Step {visibleStep} of {totalSteps}
+          </p>
+          <StepDots step={visibleStep} total={totalSteps} />
+        </div>
 
         {error && (
           <p role="alert" className="wizard-error">
@@ -145,9 +149,9 @@ export default function BuildWizardPage() {
         {statusMsg && <p className="wizard-status">{statusMsg}</p>}
 
         {step === 1 && (
-          <section className="wizard-card fade-up">
-            <h1 className="display wizard-title">Do you have an existing resume?</h1>
-            <p className="wizard-lead">We can import it as a starting point, or you can build from a blank page.</p>
+          <section className="wizard-card sq-rise">
+            <h1 className="wizard-title">Do you have an existing resume?</h1>
+            <p className="wizard-lead">Import it as a starting point, or build from a blank page.</p>
             <div className="wizard-choice-row">
               <button
                 type="button"
@@ -157,7 +161,7 @@ export default function BuildWizardPage() {
                   setStep(2);
                 }}
               >
-                Yes
+                Yes — import
               </button>
               <button
                 type="button"
@@ -168,21 +172,21 @@ export default function BuildWizardPage() {
                   setStep(3);
                 }}
               >
-                No
+                No — start blank
               </button>
             </div>
           </section>
         )}
 
         {step === 2 && hasResume && (
-          <section className="wizard-card fade-up">
-            <h1 className="display wizard-title">Upload your resume</h1>
-            <p className="wizard-lead">PDF or DOCX, max 5 MB. We will extract content and draft an improved version.</p>
-            <div className="dropzone" style={{ textAlign: "center" }}>
+          <section className="wizard-card sq-rise">
+            <h1 className="wizard-title">Upload your resume</h1>
+            <p className="wizard-lead">PDF or DOCX, max 5 MB. We extract content and draft an improved version.</p>
+            <div className="sq-dropzone">
               <button type="button" className="btn btn-ghost" onClick={() => inputRef.current?.click()}>
                 Browse files
               </button>
-              {file && <p style={{ margin: "0.75rem 0 0", fontWeight: 600 }}>{file.name}</p>}
+              {file && <p className="sq-file-name">{file.name}</p>}
               <input
                 ref={inputRef}
                 type="file"
@@ -203,73 +207,54 @@ export default function BuildWizardPage() {
         )}
 
         {step === 3 && (
-          <section className="wizard-card fade-up">
-            <h1 className="display wizard-title">What role are you targeting?</h1>
-            <p className="wizard-lead">Optional — helps you stay focused while editing (tips only in this version).</p>
-            <input
-              className="wizard-input"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              placeholder="e.g. Software Engineer, Marketing Manager"
-            />
+          <section className="wizard-card sq-rise">
+            <h1 className="wizard-title">What matters more right now?</h1>
+            <p className="wizard-lead">
+              Pass ATS shows Classic/Compact-style layouts. Look polished shows visual templates.
+            </p>
+            <div className="wizard-choice-row">
+              <button
+                type="button"
+                className="btn btn-primary wizard-choice"
+                disabled={busy}
+                onClick={() => void choosePreference("ats")}
+              >
+                {busy && preference === "ats" ? "Working…" : "Pass ATS"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost wizard-choice"
+                disabled={busy}
+                onClick={() => void choosePreference("visual")}
+              >
+                {busy && preference === "visual" ? "Working…" : "Look polished"}
+              </button>
+            </div>
             <div className="wizard-nav">
               <button
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => setStep(hasResume ? 2 : 1)}
+                disabled={busy}
               >
                 Back
-              </button>
-              <button type="button" className="btn btn-primary" onClick={() => setStep(4)}>
-                Next
               </button>
             </div>
           </section>
         )}
 
         {step === 4 && (
-          <section className="wizard-card fade-up">
-            <h1 className="display wizard-title">What matters more right now?</h1>
-            <p className="wizard-lead">
-              Classic/Compact are safer for strict ATS. Sidebar/Split look stronger to humans.
-            </p>
-            <div className="wizard-choice-row">
-              <button
-                type="button"
-                className={`btn wizard-choice ${preference === "ats" ? "btn-primary" : "btn-ghost"}`}
-                onClick={() => setPreference("ats")}
-              >
-                Pass ATS
-              </button>
-              <button
-                type="button"
-                className={`btn wizard-choice ${preference === "visual" ? "btn-primary" : "btn-ghost"}`}
-                onClick={() => setPreference("visual")}
-              >
-                Look polished
-              </button>
-            </div>
-            <div className="wizard-nav">
-              <button type="button" className="btn btn-ghost" onClick={() => setStep(3)} disabled={busy}>
-                Back
-              </button>
-              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void goToGallery()}>
-                {busy ? "Working…" : "Choose template"}
-              </button>
-            </div>
-          </section>
-        )}
-
-        {step === 5 && (
-          <section className={`fade-up ${busy ? "is-entering-template" : ""}`}>
-            <h1 className="display wizard-title" style={{ textAlign: "center" }}>
+          <section className={`sq-rise ${busy ? "is-entering-template" : ""}`}>
+            <h1 className="wizard-title" style={{ textAlign: "center" }}>
               Pick a template
             </h1>
             <p className="wizard-lead" style={{ textAlign: "center", margin: "0 auto 1.5rem" }}>
-              You can switch templates later in the editor.
+              {preference === "ats"
+                ? "ATS-friendly layouts only — you can switch later in Design."
+                : "Visual layouts only — you can switch later in Design."}
             </p>
             <div className="template-gallery">
-              {allTemplatesOrdered.map((t) => (
+              {filteredTemplates.map((t) => (
                 <TemplateThumb
                   key={t.id}
                   cv={TEMPLATE_PREVIEW_SAMPLE}
