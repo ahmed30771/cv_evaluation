@@ -91,6 +91,15 @@ export async function ensureSchema() {
     )
   `;
 
+  await sql`
+    CREATE TABLE IF NOT EXISTS cv_uploads (
+      evaluation_id UUID PRIMARY KEY REFERENCES evaluations(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      content_base64 TEXT NOT NULL
+    )
+  `;
+
   try {
     await sql`ALTER TABLE cv_rewrites ADD COLUMN IF NOT EXISTS meta JSONB NOT NULL DEFAULT '{}'::jsonb`;
   } catch {

@@ -78,6 +78,13 @@ function isLightHex(hex: string): boolean {
   return (r * 299 + g * 587 + b * 114) / 1000 > 160;
 }
 
+/**
+ * Mobile bottom-sheet snap carried across panels: switching tools while a panel is open keeps
+ * its size, but opening a panel from the closed state starts at half height again.
+ */
+let carriedSnap: "full" | "mid" | null = null;
+let carriedSnapReset: ReturnType<typeof setTimeout> | undefined;
+
 export function SidePanel({
   title,
   onClose,
@@ -96,12 +103,16 @@ export function SidePanel({
   const drag = useRef<{ startY: number; startH: number; startT: number } | null>(null);
 
   const readAvail = () => {
-    const parent = panelRef.current?.parentElement;
-    return parent?.clientHeight ?? Math.round(window.innerHeight * 0.85);
+    const panel = panelRef.current;
+    const parent = panel?.parentElement;
+    if (!panel || !parent) return Math.round(window.innerHeight * 0.85);
+    // The sheet sits above the bottom rail (`bottom` offset), so that space is not available to it.
+    const bottomOffset = parseFloat(getComputedStyle(panel).bottom) || 0;
+    return Math.max(0, parent.clientHeight - bottomOffset);
   };
 
   const snaps = (avail: number) => ({
-    full: Math.round(avail * 0.94),
+    full: Math.max(0, avail - 8),
     mid: Math.round(avail * 0.5),
     dismiss: Math.round(avail * 0.22),
   });
@@ -111,16 +122,39 @@ export function SidePanel({
   }, [sheetH]);
 
   useEffect(() => {
+    clearTimeout(carriedSnapReset);
+    return () => {
+      // A sibling panel mounting right away cancels this; otherwise the sheet was really closed.
+      carriedSnapReset = setTimeout(() => {
+        carriedSnap = null;
+      }, 150);
+    };
+  }, []);
+
+  useEffect(() => {
     const mq = window.matchMedia("(max-width: 860px)");
     const apply = () => {
+      const panel = panelRef.current;
       if (!mq.matches) {
+        if (panel) panel.style.bottom = "";
         sheetHRef.current = null;
         setSheetH(null);
         return;
       }
+      // Sit flush on top of the bottom rail, whatever its real height is.
+      const rail = panel?.parentElement?.querySelector<HTMLElement>(".editor-left-rail");
+      if (panel && rail) panel.style.bottom = `${rail.getBoundingClientRect().height}px`;
       const { mid, full } = snaps(readAvail());
       setSheetH((prev) => {
-        const next = prev == null ? mid : Math.abs(prev - full) < Math.abs(prev - mid) ? full : mid;
+        const next =
+          prev == null
+            ? carriedSnap === "full"
+              ? full
+              : mid
+            : Math.abs(prev - full) < Math.abs(prev - mid)
+              ? full
+              : mid;
+        carriedSnap = next === full ? "full" : "mid";
         sheetHRef.current = next;
         return next;
       });
@@ -171,6 +205,7 @@ export function SidePanel({
 
     if (wasTap) {
       if (h >= (full + mid) / 2) {
+        carriedSnap = "mid";
         sheetHRef.current = mid;
         setSheetH(mid);
       } else {
@@ -185,6 +220,7 @@ export function SidePanel({
     }
 
     const next = Math.abs(h - full) < Math.abs(h - mid) ? full : mid;
+    carriedSnap = next === full ? "full" : "mid";
     sheetHRef.current = next;
     setSheetH(next);
   }
@@ -221,9 +257,6 @@ export function SidePanel({
           />
         </svg>
       </button>
-      <header className="editor-side-panel-head">
-        <h2>{title}</h2>
-      </header>
       <div className="editor-side-panel-body">{children}</div>
       <button
         type="button"
@@ -362,9 +395,6 @@ export function TailorPanel({
     <SidePanel title="Rewrite & Tailor" onClose={onClose} wide>
       <section className="tailor-section">
         <h3 className="tailor-section-title">Full AI rewrite</h3>
-        <p className="editor-panel-lead">
-          Rewrite the whole resume with stronger wording. Review the canvas after — you can undo from History.
-        </p>
         <button
           type="button"
           className="btn btn-primary"
@@ -381,9 +411,6 @@ export function TailorPanel({
 
       <section className="tailor-section">
         <h3 className="tailor-section-title">Tailor to a job</h3>
-        <p className="editor-panel-lead">
-          Paste a job description. We compare your CV and suggest targeted edits — nothing is applied until you accept.
-        </p>
         <label className="editor-field-label" htmlFor="tailor-jd">
           Job description
         </label>
@@ -460,7 +487,6 @@ export function TailorPanel({
 
 export function TemplatesPanel({
   templateId,
-  preference,
   colorThemeId,
   customThemes,
   onPreference,
@@ -476,15 +502,17 @@ export function TemplatesPanel({
   onPick: (id: TemplateId) => void;
   onClose: () => void;
 }) {
-  const filtered = TEMPLATES.filter((t) =>
-    preference === "ats" ? t.badge === "ATS recommended" : t.badge === "Visual",
-  );
+  const [filter, setFilterState] = useState<"all" | "ats" | "visual">("all");
 
-  function setFilter(next: "ats" | "visual") {
+  const matches = (kind: "all" | "ats" | "visual", badge: string) =>
+    kind === "all" || (kind === "ats" ? badge === "ATS recommended" : badge === "Visual");
+  const filtered = TEMPLATES.filter((t) => matches(filter, t.badge));
+
+  function setFilter(next: "all" | "ats" | "visual") {
+    setFilterState(next);
+    if (next === "all") return;
     onPreference(next);
-    const list = TEMPLATES.filter((t) =>
-      next === "ats" ? t.badge === "ATS recommended" : t.badge === "Visual",
-    );
+    const list = TEMPLATES.filter((t) => matches(next, t.badge));
     if (list.length && !list.some((t) => t.id === templateId)) {
       onPick(list[0].id);
     }
@@ -492,28 +520,25 @@ export function TemplatesPanel({
 
   return (
     <SidePanel title="Templates" onClose={onClose} wide>
-      <p className="editor-panel-lead">
-        Pick a layout structure. Colors stay in Design — change them anytime without switching templates.
-      </p>
       <div className="template-filter-row" role="tablist" aria-label="Template style">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={preference === "ats"}
-          className={`template-filter-btn ${preference === "ats" ? "is-active" : ""}`}
-          onClick={() => setFilter("ats")}
-        >
-          ATS
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={preference === "visual"}
-          className={`template-filter-btn ${preference === "visual" ? "is-active" : ""}`}
-          onClick={() => setFilter("visual")}
-        >
-          Visual
-        </button>
+        {(
+          [
+            ["all", "All"],
+            ["ats", "ATS"],
+            ["visual", "Visual"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={filter === key}
+            className={`template-filter-btn ${filter === key ? "is-active" : ""}`}
+            onClick={() => setFilter(key)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
       <div className="template-mini-grid template-mini-grid--panel">
         {filtered.map((t) => (
@@ -562,10 +587,6 @@ export function DesignPanel({
 
   return (
     <SidePanel title="Design" onClose={onClose}>
-      <p className="editor-panel-lead">
-        Tap a strip to change that color. Layout structure stays the same.
-      </p>
-
       <h3 className="tailor-section-title">Your colors</h3>
       <div className="color-theme-swatch-preview theme-color-strips" role="group" aria-label="Custom colors">
         <ColorStrip label="Rail" value={active.railBg} onChange={(hex) => applyStrip({ railBg: hex })} />
@@ -708,7 +729,6 @@ export function RearrangePanel({
 
   return (
     <SidePanel title="Rearrange" onClose={onClose} wide>
-      <p className="editor-panel-lead">Hold ⠿ and drag, or use ← ↑ ↓ → to place sections left/right.</p>
       <div className="section-order-columns">
         <ColumnList title="Left column" ids={left} column="left" />
         <ColumnList title="Right column" ids={right} column="right" />
@@ -784,7 +804,6 @@ export function HistoryPanel({
 }) {
   return (
     <SidePanel title="History" onClose={onClose}>
-      <p className="editor-panel-lead">Snapshots from this session. Restore any earlier version of your edits.</p>
       {!entries.length && <p className="editor-panel-hint">Edit the CV to start building history.</p>}
       <ul className="history-list">
         {entries.map((e) => (
@@ -841,8 +860,6 @@ export function FormatPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <SidePanel title="Format" onClose={onClose}>
-      <p className="editor-panel-lead">Select text on the CV, then apply formatting here.</p>
-
       <h3 className="tailor-section-title">Style</h3>
       <div className="text-format-grid">
         <FormatAction label={<strong>B</strong>} title="Bold" onClick={() => runExecCommand("bold")} />

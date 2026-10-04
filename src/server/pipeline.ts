@@ -3,6 +3,7 @@ import { ensureSchema, getSql } from "./db";
 import { extractText, parseSections } from "./extract";
 import { detectInjection, neutralizeInjectionSpans } from "./integrity";
 import { evaluateCv } from "./openrouter";
+import { storeUpload } from "./uploads";
 import { finalizeScores, hashScoreContent } from "./scoring";
 
 function safeError(err: unknown): string {
@@ -39,6 +40,12 @@ export async function runEvaluationFromUpload(opts: {
   `;
 
   try {
+    await storeUpload({
+      evaluationId: id,
+      fileName: opts.filename,
+      fileType: opts.fileType,
+      buffer: opts.buffer,
+    }).catch((err) => console.error("storeUpload failed", err));
     await sql`UPDATE evaluations SET status = 'extracting' WHERE id = ${id}`;
 
     const rawText = await extractText(opts.buffer, opts.fileType);

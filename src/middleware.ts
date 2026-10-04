@@ -9,6 +9,10 @@ function isBareStudioPath(pathname: string) {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const apiId = pathname.match(/^\/api\/v1\/evaluations\/([^/]+)/)?.[1];
+  if (apiId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(apiId)) {
+    return NextResponse.json({ detail: "Evaluation not found." }, { status: 404 });
+  }
   if (
     pathname.startsWith("/api") ||
     pathname.startsWith("/_next") ||
