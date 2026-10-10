@@ -101,9 +101,19 @@ export default function EvaluatePage() {
         </div>
 
         {error && (
-          <p role="alert" className="sq-alert">
-            {error}
-          </p>
+          <div role="alert" className="sq-alert-box">
+            <p className="sq-alert">{error}</p>
+            {/busy|rate-limited|try again/i.test(error) ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-compact"
+                disabled={!file || loading}
+                onClick={() => void onSubmit()}
+              >
+                Try again
+              </button>
+            ) : null}
+          </div>
         )}
 
         <div className="sq-actions">

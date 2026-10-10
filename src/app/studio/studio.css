@@ -459,6 +459,19 @@
   margin: 0.85rem 0 0;
 }
 
+.sq-alert-box {
+  margin: 0.85rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.sq-alert-box .sq-alert {
+  margin: 0;
+  flex: 1 1 14rem;
+}
+
 .sq-score-hero {
   display: flex;
   align-items: flex-end;

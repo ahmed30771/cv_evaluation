@@ -118,10 +118,30 @@ Rules:
 - Preserve true facts from the source; upgrade presentation to clear the evaluation issues.`;
 
 const FALLBACK_MODELS = [
-  "google/gemma-4-26b-a4b-it:free",
-  "inclusionai/ling-3.0-flash-sante:free",
   "google/gemma-4-31b-it:free",
+  "google/gemma-4-26b-a4b-it:free",
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+  "openrouter/free",
 ];
+
+const RATE_LIMIT_USER_MESSAGE =
+  "AI is busy right now (free model limit). Wait about a minute and try again.";
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(err: unknown): boolean {
+  return /\b429\b|rate-limited|rate limit|too many requests/i.test(String(err));
+}
+
+function rateLimitWaitMs(err: unknown, attempt: number): number {
+  const retryAfterMs = (err as { retryAfterMs?: number } | null)?.retryAfterMs;
+  if (typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+    return Math.min(Math.max(retryAfterMs, 800), 12000);
+  }
+  return Math.min(1200 * 2 ** attempt, 8000);
+}
 
 function parseJsonContent(content: string): unknown {
   let text = content.trim();
@@ -218,7 +238,12 @@ function normalizeResult(data: Record<string, unknown>): { scores: Scores; findi
 }
 
 function modelCandidates(primary: string): string[] {
-  return [primary, ...FALLBACK_MODELS.filter((m) => m !== primary)];
+  const extra = (process.env.OPENROUTER_FALLBACK_MODELS || "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const ordered = [primary, ...extra, ...FALLBACK_MODELS];
+  return [...new Set(ordered)];
 }
 
 function openRouterConfig() {
@@ -263,7 +288,19 @@ async function chatCompletion(opts: {
 
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`OpenRouter ${resp.status}: ${text.slice(0, 280)}`);
+    const err = new Error(`OpenRouter ${resp.status}: ${text.slice(0, 280)}`) as Error & {
+      status?: number;
+      retryAfterMs?: number;
+    };
+    err.status = resp.status;
+    if (resp.status === 429) {
+      const retryAfter = resp.headers.get("retry-after");
+      const asNum = retryAfter ? Number(retryAfter) : NaN;
+      if (Number.isFinite(asNum) && asNum >= 0) {
+        err.retryAfterMs = asNum < 1000 ? asNum * 1000 : asNum;
+      }
+    }
+    throw err;
   }
 
   const result = (await resp.json()) as {
@@ -272,6 +309,42 @@ async function chatCompletion(opts: {
   const content = result.choices?.[0]?.message?.content;
   if (!content) throw new Error("Model returned empty content");
   return content;
+}
+
+async function withModelFallback<T>(
+  primary: string,
+  run: (model: string) => Promise<T>,
+): Promise<T> {
+  let lastError: unknown;
+  const models = modelCandidates(primary);
+  const started = Date.now();
+  const budgetMs = 48_000;
+
+  for (let mi = 0; mi < models.length; mi++) {
+    const model = models[mi]!;
+    const maxAttempts = mi === 0 ? 3 : 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await run(model);
+      } catch (err) {
+        lastError = err;
+        if (isRateLimitError(err)) {
+          const remaining = budgetMs - (Date.now() - started);
+          if (remaining < 1500) break;
+          const wait = Math.min(rateLimitWaitMs(err, attempt), remaining - 500);
+          if (wait > 0) await sleep(wait);
+          continue;
+        }
+        // Non-rate-limit failure: try the next model.
+        break;
+      }
+    }
+  }
+
+  if (isRateLimitError(lastError)) {
+    throw new Error(RATE_LIMIT_USER_MESSAGE);
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function callModel(
@@ -312,27 +385,16 @@ export async function evaluateCv(rawText: string): Promise<{ scores: Scores; fin
     "Score consistently using the rubric; do not invent random score swings.\n\n" +
     `<<<CV_START>>>\n${clipped}\n<<<CV_END>>>`;
 
-  let lastError: unknown;
-  // Prefer the primary model for score stability; only fall back on hard failures.
-  for (const model of modelCandidates(primary)) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        return await callModel(baseUrl, apiKey, model, userContent, { temperature: 0, seed });
-      } catch (err) {
-        lastError = err;
-        const msg = String(err);
-        if (/\b429\b|rate-limited|rate limit/i.test(msg)) break;
-      }
-    }
-  }
-
-  const msg = String(lastError);
-  if (/\b429\b|rate-limited|rate limit/i.test(msg)) {
-    throw new Error(
-      "AI model is rate-limited right now. Please wait about a minute and try again, or set OPENROUTER_MODEL to another free model.",
+  try {
+    return await withModelFallback(primary, (model) =>
+      callModel(baseUrl, apiKey, model, userContent, { temperature: 0, seed }),
     );
+  } catch (err) {
+    if (isRateLimitError(err) || String(err).includes(RATE_LIMIT_USER_MESSAGE)) {
+      throw new Error(RATE_LIMIT_USER_MESSAGE);
+    }
+    throw new Error(`OpenRouter evaluation failed: ${String(err)}`);
   }
-  throw new Error(`OpenRouter evaluation failed: ${msg}`);
 }
 
 export async function rewriteCv(opts: {
@@ -368,34 +430,24 @@ export async function rewriteCv(opts: {
     `<<<FINDINGS>>>\n${findingLines.slice(0, 16000) || "(none)"}\n<<<FINDINGS_END>>>\n\n` +
     `<<<CV_START>>>\n${opts.rawText.slice(0, 50000)}\n<<<CV_END>>>`;
 
-  let lastError: unknown;
-  for (const model of modelCandidates(primary)) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const content = await chatCompletion({
-          baseUrl,
-          apiKey,
-          model,
-          system: REWRITE_SYSTEM_PROMPT,
-          user: userContent,
-          maxTokens: 5500,
-        });
-        return normalizeStructuredCv(parseJsonContent(content));
-      } catch (err) {
-        lastError = err;
-        const msg = String(err);
-        if (/\b429\b|rate-limited|rate limit/i.test(msg)) break;
-      }
+  try {
+    return await withModelFallback(primary, async (model) => {
+      const content = await chatCompletion({
+        baseUrl,
+        apiKey,
+        model,
+        system: REWRITE_SYSTEM_PROMPT,
+        user: userContent,
+        maxTokens: 5500,
+      });
+      return normalizeStructuredCv(parseJsonContent(content));
+    });
+  } catch (err) {
+    if (isRateLimitError(err) || String(err).includes(RATE_LIMIT_USER_MESSAGE)) {
+      throw new Error(RATE_LIMIT_USER_MESSAGE);
     }
+    throw new Error(`OpenRouter rewrite failed: ${String(err)}`);
   }
-
-  const msg = String(lastError);
-  if (/\b429\b|rate-limited|rate limit/i.test(msg)) {
-    throw new Error(
-      "AI model is rate-limited right now. Please wait about a minute and try again, or set OPENROUTER_MODEL to another free model.",
-    );
-  }
-  throw new Error(`OpenRouter rewrite failed: ${msg}`);
 }
 
 /** Improve a CV text snippet with OpenRouter (used by in-preview AI edit). */
@@ -422,9 +474,8 @@ export async function improveCvText(opts: {
     (opts.findingDetail ? `Context detail: ${opts.findingDetail}\n` : "") +
     `\n<<<TEXT>>>\n${text.slice(0, 6000)}\n<<<END>>>`;
 
-  let lastError: unknown;
-  for (const model of modelCandidates(primary)) {
-    try {
+  try {
+    return await withModelFallback(primary, async (model) => {
       const content = await chatCompletion({
         baseUrl,
         apiKey,
@@ -439,11 +490,11 @@ export async function improveCvText(opts: {
         .replace(/\n?```$/i, "")
         .trim();
       return cleaned.slice(0, 8000) || text;
-    } catch (err) {
-      lastError = err;
-      const msg = String(err);
-      if (/\b429\b|rate-limited|rate limit/i.test(msg)) continue;
+    });
+  } catch (err) {
+    if (isRateLimitError(err) || String(err).includes(RATE_LIMIT_USER_MESSAGE)) {
+      throw new Error(RATE_LIMIT_USER_MESSAGE);
     }
+    throw new Error(`AI improve failed: ${String(err)}`);
   }
-  throw new Error(`AI improve failed: ${String(lastError)}`);
 }
