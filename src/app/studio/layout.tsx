@@ -35,6 +35,20 @@ export default async function StudioLayout({ children }: { children: React.React
         </div>
       </header>
       <div className="studio-body">{children}</div>
+      <footer className="studio-footer">
+        <p>
+          Created by <strong>Muhammad Junaid</strong>
+          <span aria-hidden> · </span>
+          <a href="mailto:muhamadjunaid27@gmail.com">muhamadjunaid27@gmail.com</a>
+          <span aria-hidden> · </span>
+          <a href="tel:+923092547332">+92 309 2547332</a>
+        </p>
+        <p>
+          <a href="https://bluexech.com/" target="_blank" rel="noopener noreferrer">
+            BluexechAI
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }

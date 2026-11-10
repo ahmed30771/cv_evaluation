@@ -102,10 +102,27 @@ export default function WwwHomePage() {
         </section>
       </main>
       <footer className="bx-footer">
-        <strong>
-          Offer<em>quay</em>
-        </strong>
-        <span>Job-ready tools for ambitious careers.</span>
+        <div className="bx-footer-brand">
+          <strong>
+            Offer<em>quay</em>
+          </strong>
+          <span>Job-ready tools for ambitious careers.</span>
+        </div>
+        <div className="bx-footer-credit">
+          <p>
+            Created by <strong>Muhammad Junaid</strong>
+          </p>
+          <p>
+            <a href="mailto:muhamadjunaid27@gmail.com">muhamadjunaid27@gmail.com</a>
+            <span aria-hidden> · </span>
+            <a href="tel:+923092547332">+92 309 2547332</a>
+          </p>
+          <p>
+            <a href="https://bluexech.com/" target="_blank" rel="noopener noreferrer">
+              BluexechAI
+            </a>
+          </p>
+        </div>
       </footer>
       <SiteChatbot />
     </>
