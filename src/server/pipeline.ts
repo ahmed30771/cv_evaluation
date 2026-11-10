@@ -10,7 +10,7 @@ function safeError(err: unknown): string {
   const msg = String(err ?? "");
   console.error("[evaluate]", msg.slice(0, 500));
   if (/DATABASE_URL|GEMINI_API_KEY|GROQ_API_KEY|misconfigured/i.test(msg)) return msg.slice(0, 300);
-  if (/\b429\b|\b503\b|rate-limited|rate limit|busy right now|quota|resource_exhausted|high demand/i.test(msg)) {
+  if (/\b429\b|\b503\b|rate-limited|rate limit|busy right now|quota|resource_exhausted|high demand|timeout/i.test(msg)) {
     return "AI is busy right now (free model limit). Wait about a minute and try again.";
   }
   if (/\bno longer available\b|\b404\b|not found/i.test(msg)) {
@@ -23,16 +23,25 @@ function safeError(err: unknown): string {
   return `Evaluation failed: ${msg.slice(0, 220)}`;
 }
 
-export async function runEvaluationFromUpload(opts: {
+export type StartedEvaluation = {
+  id: string;
+  status: "extracting";
+  original_filename: string;
+  fileType: "pdf" | "docx";
+  buffer: Buffer;
+  startedAt: number;
+};
+
+/** Persist upload quickly, then continue AI work in the background. */
+export async function startEvaluationFromUpload(opts: {
   filename: string;
   fileType: "pdf" | "docx";
   fileSize: number;
   buffer: Buffer;
-}) {
+}): Promise<StartedEvaluation> {
   await ensureSchema();
   const sql = getSql();
   const id = randomUUID();
-  const started = Date.now();
 
   await sql`
     INSERT INTO evaluations (
@@ -43,16 +52,32 @@ export async function runEvaluationFromUpload(opts: {
     )
   `;
 
-  try {
-    await storeUpload({
-      evaluationId: id,
-      fileName: opts.filename,
-      fileType: opts.fileType,
-      buffer: opts.buffer,
-    }).catch((err) => console.error("storeUpload failed", err));
-    await sql`UPDATE evaluations SET status = 'extracting' WHERE id = ${id}`;
+  await storeUpload({
+    evaluationId: id,
+    fileName: opts.filename,
+    fileType: opts.fileType,
+    buffer: opts.buffer,
+  }).catch((err) => console.error("storeUpload failed", err));
 
-    const rawText = await extractText(opts.buffer, opts.fileType);
+  await sql`UPDATE evaluations SET status = 'extracting' WHERE id = ${id}`;
+
+  return {
+    id,
+    status: "extracting",
+    original_filename: opts.filename,
+    fileType: opts.fileType,
+    buffer: opts.buffer,
+    startedAt: Date.now(),
+  };
+}
+
+/** Extract + Gemini evaluate + persist scores (runs after HTTP response). */
+export async function processEvaluationJob(job: StartedEvaluation): Promise<void> {
+  const sql = getSql();
+  const { id, buffer, fileType, startedAt } = job;
+
+  try {
+    const rawText = await extractText(buffer, fileType);
     if (!rawText || rawText.trim().length < 40) {
       throw new Error(
         "Could not extract enough text from this file. Use a text-based PDF or DOCX (scanned image-only PDFs are not supported in MVP).",
@@ -125,7 +150,7 @@ export async function runEvaluationFromUpload(opts: {
       `;
     }
 
-    const processingMs = Date.now() - started;
+    const processingMs = Date.now() - startedAt;
     await sql`
       UPDATE evaluations
       SET status = 'completed',
@@ -135,11 +160,9 @@ export async function runEvaluationFromUpload(opts: {
           error_message = NULL
       WHERE id = ${id}
     `;
-
-    return { id, status: "completed" as const, original_filename: opts.filename };
   } catch (err) {
     console.error("Evaluation pipeline failed", err);
-    const processingMs = Date.now() - started;
+    const processingMs = Date.now() - startedAt;
     await sql`
       UPDATE evaluations
       SET status = 'failed',
@@ -148,7 +171,23 @@ export async function runEvaluationFromUpload(opts: {
           error_message = ${safeError(err)}
       WHERE id = ${id}
     `;
-    // Surface failure to the client instead of a silent 201
-    throw new Error(safeError(err));
   }
+}
+
+/** Sync helper for local scripts/tests — waits for full completion. */
+export async function runEvaluationFromUpload(opts: {
+  filename: string;
+  fileType: "pdf" | "docx";
+  fileSize: number;
+  buffer: Buffer;
+}) {
+  const started = await startEvaluationFromUpload(opts);
+  await processEvaluationJob(started);
+  const sql = getSql();
+  const rows = await sql`SELECT status, error_message FROM evaluations WHERE id = ${started.id} LIMIT 1`;
+  const row = rows[0] as { status?: string; error_message?: string | null } | undefined;
+  if (row?.status === "failed") {
+    throw new Error(row.error_message || "Evaluation failed");
+  }
+  return { id: started.id, status: "completed" as const, original_filename: opts.filename };
 }

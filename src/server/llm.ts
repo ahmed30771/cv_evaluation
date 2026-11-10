@@ -264,6 +264,7 @@ async function geminiComplete(opts: {
   maxTokens?: number;
   temperature?: number;
   json?: boolean;
+  timeoutMs?: number;
 }): Promise<string> {
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.model)}` +
@@ -274,16 +275,30 @@ async function geminiComplete(opts: {
     contents: [{ role: "user", parts: [{ text: opts.user }] }],
     generationConfig: {
       temperature: opts.temperature ?? 0.2,
-      maxOutputTokens: opts.maxTokens ?? 8192,
+      maxOutputTokens: opts.maxTokens ?? 4096,
       ...(opts.json ? { responseMimeType: "application/json" } : {}),
     },
   };
 
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const timeoutMs = opts.timeoutMs ?? 35_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Gemini timeout after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!resp.ok) {
     const text = await resp.text();
@@ -343,11 +358,11 @@ async function groqComplete(opts: {
 async function withRetries<T>(models: string[], run: (model: string) => Promise<T>): Promise<T> {
   let lastError: unknown;
   const started = Date.now();
-  const budgetMs = 48_000;
+  const budgetMs = 50_000;
 
-  for (let mi = 0; mi < models.length; mi++) {
+  for (let mi = 0; mi < Math.min(models.length, 3); mi++) {
     const model = models[mi]!;
-    const maxAttempts = mi === 0 ? 3 : 2;
+    const maxAttempts = mi === 0 ? 2 : 1;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         return await run(model);
@@ -374,7 +389,7 @@ async function withRetries<T>(models: string[], run: (model: string) => Promise<
 /** Full CV evaluation — Gemini (complex). */
 export async function evaluateCv(rawText: string): Promise<{ scores: Scores; findings: Finding[] }> {
   const { apiKey, model } = geminiConfig();
-  const clipped = rawText.slice(0, 60000);
+  const clipped = rawText.slice(0, 24000);
   const userContent =
     "Evaluate the CV between the markers. Return a DETAILED JSON analysis only (summary + section_analysis + many findings).\n" +
     "Score consistently using the rubric; do not invent random score swings.\n\n" +
@@ -388,8 +403,9 @@ export async function evaluateCv(rawText: string): Promise<{ scores: Scores; fin
         system: SYSTEM_PROMPT,
         user: userContent,
         temperature: 0,
-        maxTokens: 8192,
+        maxTokens: 4096,
         json: true,
+        timeoutMs: 40_000,
       });
       return normalizeResult(parseJsonContent(content) as Record<string, unknown>);
     });

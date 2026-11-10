@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createEvaluation } from "@/lib/api";
+import { createEvaluation, waitForEvaluation } from "@/lib/api";
 import { BuilderChrome } from "@/components/BuilderChrome";
 import { studioPath } from "@/lib/site";
 
@@ -42,6 +42,7 @@ export default function EvaluatePage() {
     setError(null);
     try {
       const { id } = await createEvaluation(file);
+      await waitForEvaluation(id);
       router.push(studioPath(`/evaluations/${id}`));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");

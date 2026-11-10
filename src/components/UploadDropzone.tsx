@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createEvaluation } from "@/lib/api";
+import { createEvaluation, waitForEvaluation } from "@/lib/api";
 import { studioPath } from "@/lib/site";
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -42,6 +42,7 @@ export function UploadDropzone() {
     setError(null);
     try {
       const { id } = await createEvaluation(file);
+      await waitForEvaluation(id);
       router.push(studioPath(`/evaluations/${id}`));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");

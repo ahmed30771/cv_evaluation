@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { runEvaluationFromUpload } from "@/server/pipeline";
+import { after, NextResponse } from "next/server";
+import { processEvaluationJob, startEvaluationFromUpload } from "@/server/pipeline";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -50,18 +50,27 @@ export async function POST(req: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await runEvaluationFromUpload({
+    const started = await startEvaluationFromUpload({
       filename: name,
       fileType,
       fileSize: file.size,
       buffer,
     });
 
+    // Return immediately so the browser/Vercel gateway does not 504 while Gemini runs.
+    after(async () => {
+      try {
+        await processEvaluationJob(started);
+      } catch (err) {
+        console.error("Background evaluation failed", err);
+      }
+    });
+
     return NextResponse.json(
       {
-        id: result.id,
-        status: result.status,
-        original_filename: result.original_filename,
+        id: started.id,
+        status: started.status,
+        original_filename: started.original_filename,
         created_at: new Date().toISOString(),
       },
       { status: 201 },

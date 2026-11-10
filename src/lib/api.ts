@@ -78,7 +78,7 @@ async function readError(res: Response): Promise<string> {
   return `Request failed (${res.status})`;
 }
 
-export async function createEvaluation(file: File): Promise<{ id: string }> {
+export async function createEvaluation(file: File): Promise<{ id: string; status?: string }> {
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`${API_BASE}/api/v1/evaluations`, {
@@ -87,6 +87,25 @@ export async function createEvaluation(file: File): Promise<{ id: string }> {
   });
   if (!res.ok) throw new Error(await readError(res));
   return res.json();
+}
+
+/** Poll until evaluation completes or fails (AI runs after upload returns). */
+export async function waitForEvaluation(
+  id: string,
+  opts?: { onStatus?: (status: string) => void; timeoutMs?: number },
+): Promise<EvaluationStatus> {
+  const timeoutMs = opts?.timeoutMs ?? 180_000;
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const s = await getEvaluation(id);
+    opts?.onStatus?.(s.status);
+    if (s.status === "completed") return s;
+    if (s.status === "failed") {
+      throw new Error(s.error_message || "Evaluation failed");
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error("Evaluation is taking too long. Open the result page or try again in a minute.");
 }
 
 export async function createBlankResume(body?: {

@@ -9,8 +9,8 @@ import {
   createBlankResume,
   createEvaluation,
   generateRewrite,
-  getEvaluation,
   updateRewrite,
+  waitForEvaluation,
   type TemplateId,
 } from "@/lib/api";
 import { TEMPLATES } from "@/lib/templates";
@@ -63,13 +63,10 @@ export default function BuildWizardPage() {
     if (!file) throw new Error("Choose a PDF or DOCX file first.");
     setStatusMsg("Uploading and evaluating…");
     const { id } = await createEvaluation(file);
-    for (let i = 0; i < 90; i++) {
-      const s = await getEvaluation(id);
-      if (s.status === "completed") break;
-      if (s.status === "failed") throw new Error(s.error_message || "Evaluation failed");
-      setStatusMsg(s.status === "evaluating" ? "AI is analyzing your CV…" : "Extracting text…");
-      await new Promise((r) => setTimeout(r, 2000));
-    }
+    await waitForEvaluation(id, {
+      onStatus: (status) =>
+        setStatusMsg(status === "evaluating" ? "AI is analyzing your CV…" : "Extracting text…"),
+    });
     setStatusMsg("Building an improved resume draft…");
     await generateRewrite(id);
     await updateRewrite(id, {
