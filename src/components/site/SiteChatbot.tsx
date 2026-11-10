@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ChatMessageText } from "@/components/site/ChatMessageText";
 import { appHref } from "@/lib/site";
 
 type Msg = { role: "bot" | "user"; text: string };
@@ -83,7 +84,7 @@ export function SiteChatbot() {
           <div className="bx-chat-body">
             {msgs.map((m, i) => (
               <div key={i} className={`bx-chat-bubble bx-chat-bubble--${m.role}`}>
-                {m.text}
+                {m.role === "bot" ? <ChatMessageText text={m.text} /> : m.text}
               </div>
             ))}
             {busy && (

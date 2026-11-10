@@ -158,86 +158,139 @@
   overflow: hidden;
 }
 
+.studio-footer-stage {
+  --footer-p: 0;
+  overflow: hidden;
+}
+
 .studio-footer {
   position: relative;
   z-index: 1;
+  isolation: isolate;
+  overflow: hidden;
   display: grid;
   gap: 0.55rem;
   justify-items: center;
-  padding: 1.15rem 1.25rem 1.6rem;
-  border-top: 1px solid var(--sq-line);
-  color: var(--sq-muted);
+  padding: 1.35rem 1.25rem 5rem;
+  border-top: 0;
+  color: rgba(232, 238, 245, 0.78);
   font-size: 0.82rem;
   line-height: 1.45;
   text-align: center;
-  background: linear-gradient(180deg, transparent 0%, rgba(15, 118, 110, 0.04) 100%);
+  background:
+    radial-gradient(520px 160px at 50% 120%, rgba(20, 184, 166, 0.32), transparent 60%),
+    linear-gradient(165deg, #0b1220 0%, #10261f 52%, #0f766e 130%);
+  opacity: calc(0.15 + (var(--footer-p) * 0.85));
+  transform:
+    translate3d(0, calc((1 - var(--footer-p)) * 70%), 0)
+    scale(calc(0.93 + (var(--footer-p) * 0.07)));
+  filter: blur(calc((1 - var(--footer-p)) * 5px));
+  will-change: transform, opacity, filter;
+}
+
+.studio-footer-label,
+.studio-footer-name,
+.studio-footer-role,
+.studio-footer-links {
+  opacity: calc(0.2 + (var(--footer-p) * 0.8));
+  transform: translate3d(0, calc((1 - var(--footer-p)) * 20px), 0);
+}
+
+.studio-footer::after {
+  content: "";
+  position: absolute;
+  inset: auto -15% -55% -15%;
+  height: 70%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(20, 184, 166, 0.26), transparent 68%);
+  animation: sqFooterGlow 7s ease-in-out infinite alternate;
+  pointer-events: none;
 }
 
 .studio-footer-label {
   margin: 0;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--sq-muted);
-}
-
-.studio-footer-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  justify-content: center;
-}
-
-.studio-footer-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.34rem 0.7rem;
-  border-radius: 999px;
-  border: 1px solid var(--sq-line);
-  background: #fff;
-  color: var(--sq-ink);
-  text-decoration: none;
-  font-size: 0.78rem;
-  font-weight: 600;
-  line-height: 1.2;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-}
-
-a.studio-footer-tag:hover {
-  border-color: rgba(15, 118, 110, 0.35);
-  background: rgba(20, 184, 166, 0.08);
-  color: var(--sq-teal);
-}
-
-.studio-footer-tag--person {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.06rem;
-  border-radius: 12px;
-  padding: 0.4rem 0.75rem;
-}
-
-.studio-footer-tag--person em {
-  font-style: normal;
   font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--sq-teal);
+  color: rgba(232, 238, 245, 0.55);
 }
 
-.studio-footer-tag--brand {
-  background: var(--sq-ink);
-  border-color: var(--sq-ink);
+.studio-footer-name {
+  margin: 0;
   color: #fff;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 
-a.studio-footer-tag--brand:hover {
-  background: var(--sq-teal);
-  border-color: var(--sq-teal);
-  color: #fff;
+.studio-footer-role {
+  margin: 0 0 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: #5eead4;
+}
+
+.studio-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0;
+  justify-content: center;
+  align-items: center;
+}
+
+.studio-footer-links a {
+  color: rgba(247, 250, 252, 0.88);
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 550;
+  transition: color 0.15s ease;
+}
+
+.studio-footer-links a:hover {
+  color: #5eead4;
+}
+
+.studio-footer-links a + a::before {
+  content: "·";
+  display: inline-block;
+  margin: 0 0.5rem;
+  color: rgba(232, 238, 245, 0.35);
+  pointer-events: none;
+}
+
+@keyframes sqFooterGlow {
+  from {
+    transform: translateY(10px) scale(0.96);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateY(-6px) scale(1.04);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-footer-stage {
+    --footer-p: 1 !important;
+  }
+
+  .studio-footer,
+  .studio-footer-label,
+  .studio-footer-name,
+  .studio-footer-role,
+  .studio-footer-links {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  .studio-footer::after {
+    animation: none;
+  }
 }
 
 .studio-shell:has(.editor-page) > .studio-footer {

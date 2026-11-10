@@ -1,4 +1,5 @@
 import { SiteChatbot } from "@/components/site/SiteChatbot";
+import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { appHref } from "@/lib/site";
 
@@ -101,37 +102,7 @@ export default function WwwHomePage() {
           </a>
         </section>
       </main>
-      <footer className="bx-footer">
-        <div className="bx-footer-brand">
-          <strong>
-            Offer<em>quay</em>
-          </strong>
-          <span>Job-ready tools for ambitious careers.</span>
-        </div>
-        <div className="bx-footer-credit">
-          <p className="bx-footer-credit-label">Built with care by</p>
-          <div className="bx-footer-tags">
-            <span className="bx-footer-tag bx-footer-tag--person">
-              Muhammad Junaid
-              <em>CEO, Bluexech AI</em>
-            </span>
-            <a className="bx-footer-tag" href="mailto:Junaid@bluexech.com">
-              Junaid@bluexech.com
-            </a>
-            <a className="bx-footer-tag" href="tel:+923092547332">
-              +92 309 2547332
-            </a>
-            <a
-              className="bx-footer-tag bx-footer-tag--brand"
-              href="https://bluexech.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Bluexech AI
-            </a>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
       <SiteChatbot />
     </>
   );

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { StudioFooter } from "@/components/site/StudioFooter";
 import { mainHref, studioPath } from "@/lib/site";
 import "./studio.css";
 
@@ -35,29 +36,7 @@ export default async function StudioLayout({ children }: { children: React.React
         </div>
       </header>
       <div className="studio-body">{children}</div>
-      <footer className="studio-footer">
-        <p className="studio-footer-label">Built with care by</p>
-        <div className="studio-footer-tags">
-          <span className="studio-footer-tag studio-footer-tag--person">
-            Muhammad Junaid
-            <em>CEO, Bluexech AI</em>
-          </span>
-          <a className="studio-footer-tag" href="mailto:Junaid@bluexech.com">
-            Junaid@bluexech.com
-          </a>
-          <a className="studio-footer-tag" href="tel:+923092547332">
-            +92 309 2547332
-          </a>
-          <a
-            className="studio-footer-tag studio-footer-tag--brand"
-            href="https://bluexech.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Bluexech AI
-          </a>
-        </div>
-      </footer>
+      <StudioFooter />
     </div>
   );
 }
