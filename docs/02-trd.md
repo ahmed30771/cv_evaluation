@@ -2,7 +2,7 @@
 
 **Product:** CV Evaluation Platform  
 **Version:** 1.1 (MVP)  
-**Stack:** Next.js (UI + API Route Handlers) · PostgreSQL (Neon) · OpenRouter
+**Stack:** Next.js (UI + API Route Handlers) · PostgreSQL (Neon) · Gemini + Groq
 
 ---
 
@@ -24,7 +24,7 @@ flowchart LR
 | UI | Next.js App Router, TypeScript, Tailwind CSS | Landing, upload, processing poll, detailed report |
 | API | Next.js Route Handlers under `src/app/api/` | Upload, validation, extraction, LLM orchestration, persistence, report |
 | Database | PostgreSQL on Neon (`@neondatabase/serverless`) | Evaluations, extractions, scores, findings |
-| AI | OpenRouter (chat completions) | Structured CV evaluation JSON + fallbacks on rate limit |
+| AI | Gemini (eval/rewrite) + Groq (short improve) | Structured CV evaluation JSON + free-model retries |
 | Parsers | `unpdf` (PDF), `mammoth` (DOCX) | Text extraction on Vercel serverless |
 | Optional | `backend/` FastAPI | Local/Python experiments only — **not** the Vercel production path |
 
@@ -33,7 +33,7 @@ flowchart LR
 ```text
 /
   src/app/                 # Next.js pages + API routes
-  src/server/              # extract, openrouter, scoring, integrity, pipeline, db
+  src/server/              # extract, llm (gemini/groq), scoring, integrity, pipeline, db
   src/components/
   backend/                 # Optional FastAPI (local only)
   package.json
@@ -43,7 +43,7 @@ flowchart LR
 
 **Deployment (MVP):** One Vercel project, Root Directory = repo root.  
 API is same-origin (`/api/v1/...`, `/api/health`). Do **not** set `NEXT_PUBLIC_API_BASE_URL` on Vercel.  
-Env vars on Vercel: `DATABASE_URL`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_BASE_URL`, `MAX_UPLOAD_BYTES`.
+Env vars on Vercel: `DATABASE_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GROQ_API_KEY`, `GROQ_MODEL`, `MAX_UPLOAD_BYTES`.
 
 ---
 

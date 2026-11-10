@@ -14,9 +14,9 @@ export async function POST(req: Request, ctx: Ctx) {
         { status: 500 },
       );
     }
-    if (!process.env.OPENROUTER_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { detail: "Server misconfigured: OPENROUTER_API_KEY is missing." },
+        { detail: "Server misconfigured: GEMINI_API_KEY is missing." },
         { status: 500 },
       );
     }

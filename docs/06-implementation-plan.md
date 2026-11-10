@@ -2,7 +2,7 @@
 
 **Product:** CV Evaluation Platform  
 **Version:** 1.1 (MVP)  
-**Stack:** Next.js (UI + API) · Neon PostgreSQL · OpenRouter
+**Stack:** Next.js (UI + API) · Neon PostgreSQL · Gemini + Groq
 
 This plan sequences delivery for the MVP priority path: **Upload CV → Extract Text → AI Evaluation → Score → Detailed Report**. History, JD matching, and admin are Phase 2 only.
 

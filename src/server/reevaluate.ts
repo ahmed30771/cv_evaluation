@@ -9,15 +9,15 @@ import {
 } from "./draft";
 import { ensureSchema, getSql } from "./db";
 import { detectInjection, neutralizeInjectionSpans } from "./integrity";
-import { evaluateCv } from "./openrouter";
+import { evaluateCv } from "./llm";
 import { finalizeScores, hashScoreContent, type Scores } from "./scoring";
 import { parseSections } from "./extract";
 
 function safeError(err: unknown): string {
   const msg = String(err ?? "");
-  if (/DATABASE_URL|OPENROUTER_API_KEY|misconfigured/i.test(msg)) return msg.slice(0, 300);
-  if (/OpenRouter|401|402|429|rate-limited|rate limit/i.test(msg)) {
-    if (/\b429\b|rate-limited|rate limit|busy right now/i.test(msg)) {
+  if (/DATABASE_URL|GEMINI_API_KEY|GROQ_API_KEY|misconfigured/i.test(msg)) return msg.slice(0, 300);
+  if (/Gemini|Groq|401|402|403|429|rate-limited|rate limit|quota|resource_exhausted/i.test(msg)) {
+    if (/\b429\b|rate-limited|rate limit|busy right now|quota|resource_exhausted/i.test(msg)) {
       return "AI is busy right now (free model limit). Wait about a minute and try again.";
     }
     return "AI evaluation service is temporarily unavailable. Please try again.";

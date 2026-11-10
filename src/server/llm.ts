@@ -117,30 +117,18 @@ Rules:
 - Omit empty optional fields by using empty arrays/strings rather than null.
 - Preserve true facts from the source; upgrade presentation to clear the evaluation issues.`;
 
-const FALLBACK_MODELS = [
-  "google/gemma-4-31b-it:free",
-  "google/gemma-4-26b-a4b-it:free",
-  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-  "openrouter/free",
-];
-
 const RATE_LIMIT_USER_MESSAGE =
   "AI is busy right now (free model limit). Wait about a minute and try again.";
+
+const GEMINI_FALLBACKS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-flash-latest"];
+const GROQ_FALLBACKS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "gemma2-9b-it"];
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isRateLimitError(err: unknown): boolean {
-  return /\b429\b|rate-limited|rate limit|too many requests/i.test(String(err));
-}
-
-function rateLimitWaitMs(err: unknown, attempt: number): number {
-  const retryAfterMs = (err as { retryAfterMs?: number } | null)?.retryAfterMs;
-  if (typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
-    return Math.min(Math.max(retryAfterMs, 800), 12000);
-  }
-  return Math.min(1200 * 2 ** attempt, 8000);
+  return /\b429\b|rate-limited|rate limit|too many requests|resource_exhausted|quota/i.test(String(err));
 }
 
 function parseJsonContent(content: string): unknown {
@@ -237,86 +225,111 @@ function normalizeResult(data: Record<string, unknown>): { scores: Scores; findi
   return { scores, findings };
 }
 
-function modelCandidates(primary: string): string[] {
-  const extra = (process.env.OPENROUTER_FALLBACK_MODELS || "")
-    .split(",")
-    .map((m) => m.trim())
-    .filter(Boolean);
-  const ordered = [primary, ...extra, ...FALLBACK_MODELS];
-  return [...new Set(ordered)];
+function modelList(primary: string, fallbacks: string[]): string[] {
+  return [...new Set([primary, ...fallbacks].filter(Boolean))];
 }
 
-function openRouterConfig() {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const primary = process.env.OPENROUTER_MODEL || "google/gemma-4-26b-a4b-it:free";
-  const baseUrl = (process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/$/, "");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
-  return { apiKey, primary, baseUrl };
+function geminiConfig() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  return { apiKey, model };
 }
 
-async function chatCompletion(opts: {
-  baseUrl: string;
-  apiKey: string;
+function groqConfig() {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error("GROQ_API_KEY is not set");
+  const model = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
+  return { apiKey, model };
+}
+
+/** Gemini generateContent — used for large/complex tasks. */
+async function geminiComplete(opts: {
   model: string;
+  apiKey: string;
   system: string;
   user: string;
   maxTokens?: number;
   temperature?: number;
-  seed?: number;
+  json?: boolean;
 }): Promise<string> {
-  const body: Record<string, unknown> = {
-    model: opts.model,
-    temperature: opts.temperature ?? 0.2,
-    max_tokens: opts.maxTokens ?? 4500,
-    messages: [
-      { role: "system", content: opts.system },
-      { role: "user", content: opts.user },
-    ],
-  };
-  if (typeof opts.seed === "number") body.seed = opts.seed;
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.model)}` +
+    `:generateContent?key=${encodeURIComponent(opts.apiKey)}`;
 
-  const resp = await fetch(`${opts.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${opts.apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://cv-evaluation.vercel.app",
-      "X-Title": "Offerquay Resume Studio",
+  const body: Record<string, unknown> = {
+    systemInstruction: { parts: [{ text: opts.system }] },
+    contents: [{ role: "user", parts: [{ text: opts.user }] }],
+    generationConfig: {
+      temperature: opts.temperature ?? 0.2,
+      maxOutputTokens: opts.maxTokens ?? 8192,
+      ...(opts.json ? { responseMimeType: "application/json" } : {}),
     },
+  };
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 
   if (!resp.ok) {
     const text = await resp.text();
-    const err = new Error(`OpenRouter ${resp.status}: ${text.slice(0, 280)}`) as Error & {
-      status?: number;
-      retryAfterMs?: number;
-    };
-    err.status = resp.status;
-    if (resp.status === 429) {
-      const retryAfter = resp.headers.get("retry-after");
-      const asNum = retryAfter ? Number(retryAfter) : NaN;
-      if (Number.isFinite(asNum) && asNum >= 0) {
-        err.retryAfterMs = asNum < 1000 ? asNum * 1000 : asNum;
-      }
-    }
-    throw err;
+    throw new Error(`Gemini ${resp.status}: ${text.slice(0, 280)}`);
+  }
+
+  const result = (await resp.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+    error?: { message?: string };
+  };
+  if (result.error?.message) throw new Error(`Gemini: ${result.error.message}`);
+  const parts = result.candidates?.[0]?.content?.parts || [];
+  const content = parts.map((p) => p.text || "").join("").trim();
+  if (!content) throw new Error("Gemini returned empty content");
+  return content;
+}
+
+/** Groq OpenAI-compatible chat — used for small/fast tasks. */
+async function groqComplete(opts: {
+  model: string;
+  apiKey: string;
+  system: string;
+  user: string;
+  maxTokens?: number;
+  temperature?: number;
+}): Promise<string> {
+  const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${opts.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: opts.model,
+      temperature: opts.temperature ?? 0.2,
+      max_tokens: opts.maxTokens ?? 1200,
+      messages: [
+        { role: "system", content: opts.system },
+        { role: "user", content: opts.user },
+      ],
+    }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Groq ${resp.status}: ${text.slice(0, 280)}`);
   }
 
   const result = (await resp.json()) as {
     choices?: { message?: { content?: string | null } }[];
   };
-  const content = result.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Model returned empty content");
+  const content = result.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error("Groq returned empty content");
   return content;
 }
 
-async function withModelFallback<T>(
-  primary: string,
-  run: (model: string) => Promise<T>,
-): Promise<T> {
+async function withRetries<T>(models: string[], run: (model: string) => Promise<T>): Promise<T> {
   let lastError: unknown;
-  const models = modelCandidates(primary);
   const started = Date.now();
   const budgetMs = 48_000;
 
@@ -331,79 +344,57 @@ async function withModelFallback<T>(
         if (isRateLimitError(err)) {
           const remaining = budgetMs - (Date.now() - started);
           if (remaining < 1500) break;
-          const wait = Math.min(rateLimitWaitMs(err, attempt), remaining - 500);
+          const wait = Math.min(1200 * 2 ** attempt, Math.min(8000, remaining - 500));
           if (wait > 0) await sleep(wait);
           continue;
         }
-        // Non-rate-limit failure: try the next model.
         break;
       }
     }
   }
 
-  if (isRateLimitError(lastError)) {
-    throw new Error(RATE_LIMIT_USER_MESSAGE);
-  }
+  if (isRateLimitError(lastError)) throw new Error(RATE_LIMIT_USER_MESSAGE);
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-async function callModel(
-  baseUrl: string,
-  apiKey: string,
-  model: string,
-  userContent: string,
-  opts?: { temperature?: number; seed?: number },
-): Promise<{ scores: Scores; findings: Finding[] }> {
-  const content = await chatCompletion({
-    baseUrl,
-    apiKey,
-    model,
-    system: SYSTEM_PROMPT,
-    user: userContent,
-    temperature: opts?.temperature ?? 0,
-    seed: opts?.seed,
-  });
-  return normalizeResult(parseJsonContent(content) as Record<string, unknown>);
-}
-
-function seedFromText(text: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return Math.abs(h) % 2147483647;
-}
-
+/** Full CV evaluation — Gemini (complex). */
 export async function evaluateCv(rawText: string): Promise<{ scores: Scores; findings: Finding[] }> {
-  const { apiKey, primary, baseUrl } = openRouterConfig();
+  const { apiKey, model } = geminiConfig();
   const clipped = rawText.slice(0, 60000);
-  const seed = seedFromText(clipped);
-
   const userContent =
     "Evaluate the CV between the markers. Return a DETAILED JSON analysis only (summary + section_analysis + many findings).\n" +
     "Score consistently using the rubric; do not invent random score swings.\n\n" +
     `<<<CV_START>>>\n${clipped}\n<<<CV_END>>>`;
 
   try {
-    return await withModelFallback(primary, (model) =>
-      callModel(baseUrl, apiKey, model, userContent, { temperature: 0, seed }),
-    );
+    return await withRetries(modelList(model, GEMINI_FALLBACKS), async (m) => {
+      const content = await geminiComplete({
+        apiKey,
+        model: m,
+        system: SYSTEM_PROMPT,
+        user: userContent,
+        temperature: 0,
+        maxTokens: 8192,
+        json: true,
+      });
+      return normalizeResult(parseJsonContent(content) as Record<string, unknown>);
+    });
   } catch (err) {
     if (isRateLimitError(err) || String(err).includes(RATE_LIMIT_USER_MESSAGE)) {
       throw new Error(RATE_LIMIT_USER_MESSAGE);
     }
-    throw new Error(`OpenRouter evaluation failed: ${String(err)}`);
+    throw new Error(`CV evaluation failed: ${String(err)}`);
   }
 }
 
+/** Full structured rewrite — Gemini (complex). */
 export async function rewriteCv(opts: {
   rawText: string;
   sections: Record<string, unknown>;
   findings: { type: string; title: string; detail: string; section?: string | null }[];
   currentCv?: unknown;
 }): Promise<StructuredCv> {
-  const { apiKey, primary, baseUrl } = openRouterConfig();
+  const { apiKey, model } = geminiConfig();
 
   const actionable = opts.findings
     .filter((f) => ["issue", "missing", "recommendation", "improvement"].includes(f.type))
@@ -431,14 +422,15 @@ export async function rewriteCv(opts: {
     `<<<CV_START>>>\n${opts.rawText.slice(0, 50000)}\n<<<CV_END>>>`;
 
   try {
-    return await withModelFallback(primary, async (model) => {
-      const content = await chatCompletion({
-        baseUrl,
+    return await withRetries(modelList(model, GEMINI_FALLBACKS), async (m) => {
+      const content = await geminiComplete({
         apiKey,
-        model,
+        model: m,
         system: REWRITE_SYSTEM_PROMPT,
         user: userContent,
-        maxTokens: 5500,
+        maxTokens: 8192,
+        temperature: 0.2,
+        json: true,
       });
       return normalizeStructuredCv(parseJsonContent(content));
     });
@@ -446,11 +438,11 @@ export async function rewriteCv(opts: {
     if (isRateLimitError(err) || String(err).includes(RATE_LIMIT_USER_MESSAGE)) {
       throw new Error(RATE_LIMIT_USER_MESSAGE);
     }
-    throw new Error(`OpenRouter rewrite failed: ${String(err)}`);
+    throw new Error(`CV rewrite failed: ${String(err)}`);
   }
 }
 
-/** Improve a CV text snippet with OpenRouter (used by in-preview AI edit). */
+/** Short text improvement — Groq (fast/small). */
 export async function improveCvText(opts: {
   text: string;
   section?: string | null;
@@ -461,7 +453,7 @@ export async function improveCvText(opts: {
   const text = (opts.text || "").trim();
   if (!text) return "";
 
-  const { apiKey, primary, baseUrl } = openRouterConfig();
+  const { apiKey, model } = groqConfig();
   const system =
     "You improve resume text. Return ONLY the improved text — no quotes, no markdown, no commentary. " +
     "Do not invent employers, degrees, dates, or metrics not supported by the input. " +
@@ -475,11 +467,10 @@ export async function improveCvText(opts: {
     `\n<<<TEXT>>>\n${text.slice(0, 6000)}\n<<<END>>>`;
 
   try {
-    return await withModelFallback(primary, async (model) => {
-      const content = await chatCompletion({
-        baseUrl,
+    return await withRetries(modelList(model, GROQ_FALLBACKS), async (m) => {
+      const content = await groqComplete({
         apiKey,
-        model,
+        model: m,
         system,
         user,
         maxTokens: 1200,

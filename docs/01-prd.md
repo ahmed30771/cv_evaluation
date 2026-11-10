@@ -3,7 +3,7 @@
 **Product:** CV Evaluation Platform  
 **Version:** 1.0 (MVP)  
 **Status:** Approved for documentation  
-**Stack context:** Next.js (UI + API) · Neon PostgreSQL · OpenRouter
+**Stack context:** Next.js (UI + API) · Neon PostgreSQL · Gemini + Groq
 
 ---
 

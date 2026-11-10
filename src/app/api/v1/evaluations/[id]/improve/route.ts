@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, getSql } from "@/server/db";
-import { improveCvText } from "@/server/openrouter";
+import { improveCvText } from "@/server/llm";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -9,9 +9,9 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export async function POST(req: Request, ctx: Ctx) {
   try {
-    if (!process.env.OPENROUTER_API_KEY) {
+    if (!process.env.GROQ_API_KEY) {
       return NextResponse.json(
-        { detail: "Server misconfigured: OPENROUTER_API_KEY is missing." },
+        { detail: "Server misconfigured: GROQ_API_KEY is missing." },
         { status: 500 },
       );
     }

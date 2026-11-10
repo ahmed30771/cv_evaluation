@@ -7,7 +7,7 @@ import {
   type StructuredCv,
   type TemplateId,
 } from "@/server/cv-model";
-import { rewriteCv } from "@/server/openrouter";
+import { rewriteCv } from "@/server/llm";
 import type { ResumeMeta } from "@/server/resumes";
 import { normalizeCustomThemes } from "@/lib/templates";
 

@@ -2,7 +2,7 @@
 
 Project documentation for the AI-Powered CV Evaluation Platform.
 
-**Stack:** Next.js (UI + API Route Handlers at repo root) · Neon PostgreSQL · OpenRouter  
+**Stack:** Next.js (UI + API Route Handlers at repo root) · Neon PostgreSQL · Gemini + Groq  
 **Optional:** `backend/` FastAPI kept for local/Python experiments only (not used on Vercel)  
 **MVP:** Resume builder (onboarding → templates → live editor → PDF/DOCX) + optional AI CV evaluation  
 **Deploy:** One Vercel project (same domain for UI + `/api/v1`)  
