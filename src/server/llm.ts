@@ -243,12 +243,15 @@ function groqConfig() {
   return { apiKey, model };
 }
 
+type GroqMessage = { role: "system" | "user" | "assistant"; content: string };
+
 /** Groq OpenAI-compatible chat completions. */
 async function groqComplete(opts: {
   model: string;
   apiKey: string;
-  system: string;
-  user: string;
+  system?: string;
+  user?: string;
+  messages?: GroqMessage[];
   maxTokens?: number;
   temperature?: number;
   json?: boolean;
@@ -257,6 +260,14 @@ async function groqComplete(opts: {
   const timeoutMs = opts.timeoutMs ?? 55_000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const messages: GroqMessage[] =
+    opts.messages && opts.messages.length > 0
+      ? opts.messages
+      : [
+          { role: "system", content: opts.system || "" },
+          { role: "user", content: opts.user || "" },
+        ];
 
   let resp: Response;
   try {
@@ -271,10 +282,7 @@ async function groqComplete(opts: {
         temperature: opts.temperature ?? 0.2,
         max_tokens: opts.maxTokens ?? GROQ_MAX_TOKENS,
         ...(opts.json ? { response_format: { type: "json_object" } } : {}),
-        messages: [
-          { role: "system", content: opts.system },
-          { role: "user", content: opts.user },
-        ],
+        messages,
       }),
       signal: controller.signal,
     });

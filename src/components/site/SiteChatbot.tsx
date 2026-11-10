@@ -5,68 +5,76 @@ import { appHref } from "@/lib/site";
 
 type Msg = { role: "bot" | "user"; text: string };
 
-const REPLIES: { match: RegExp; reply: string }[] = [
-  {
-    match: /resume|cv|score|ats|template|build/i,
-    reply:
-      "Resume Studio is live on the app. You can build from scratch, upload a CV for AI scoring, edit in a live preview, then export PDF/DOCX.",
-  },
-  {
-    match: /interview|prep|mock/i,
-    reply:
-      "Interview Prep is on our roadmap — practice questions, feedback, and role-specific drills. Want a heads-up when it launches? Say “notify me”.",
-  },
-  {
-    match: /notify|waitlist|launch/i,
-    reply: "Noted! Keep an eye on Offerquay — Interview Prep and Career Coach will land here. Meanwhile, start with Resume Studio.",
-  },
-  {
-    match: /price|cost|free|paid/i,
-    reply: "Resume Studio scoring and building are available in the app today. Pricing for future premium tools will be announced with those launches.",
-  },
-  {
-    match: /hello|hi|hey|salam/i,
-    reply: "Hey — I’m the Offerquay guide. Ask about Resume Studio, upcoming Interview Prep, or how to get started.",
-  },
-];
+const WELCOME =
+  "Hi — I’m the Offerquay AI guide. I can walk you through Resume Studio (score, build, edit, export) and what’s coming next. What do you want to do?";
 
-function botReply(input: string): string {
-  for (const row of REPLIES) {
-    if (row.match.test(input)) return row.reply;
+async function askGuide(history: Msg[]): Promise<string> {
+  const res = await fetch("/api/v1/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages: history.map((m) => ({
+        role: m.role === "bot" ? "assistant" : "user",
+        content: m.text,
+      })),
+    }),
+  });
+  if (!res.ok) {
+    let detail = "Could not reach the guide.";
+    try {
+      const data = (await res.json()) as { detail?: string };
+      if (data.detail) detail = data.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
   }
-  return "I can help with Resume Studio (live now), Interview Prep (soon), or how Offerquay gets you job-ready. What do you want to know?";
+  const data = (await res.json()) as { reply?: string };
+  return (data.reply || "").trim() || "Tell me what you want to do in Resume Studio and I’ll guide you.";
 }
 
 export function SiteChatbot() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
-  const [msgs, setMsgs] = useState<Msg[]>([
-    {
-      role: "bot",
-      text: "Hi — Offerquay helps you get job-ready. Resume Studio is live; Interview Prep is next. Ask me anything.",
-    },
-  ]);
+  const [busy, setBusy] = useState(false);
+  const [msgs, setMsgs] = useState<Msg[]>([{ role: "bot", text: WELCOME }]);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs, open]);
+  }, [msgs, open, busy]);
 
-  function send(text?: string) {
+  async function send(text?: string) {
     const value = (text ?? input).trim();
-    if (!value) return;
-    setMsgs((m) => [...m, { role: "user", text: value }, { role: "bot", text: botReply(value) }]);
+    if (!value || busy) return;
+
+    const nextMsgs: Msg[] = [...msgs, { role: "user", text: value }];
+    setMsgs(nextMsgs);
     setInput("");
+    setBusy(true);
+
+    try {
+      const reply = await askGuide(nextMsgs);
+      setMsgs((m) => [...m, { role: "bot", text: reply }]);
+    } catch (err) {
+      const fallback =
+        err instanceof Error && err.message
+          ? err.message
+          : "I couldn’t answer just now. Try again, or open Resume Studio.";
+      setMsgs((m) => [...m, { role: "bot", text: fallback }]);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <div className={`bx-chat ${open ? "is-open" : ""}`}>
       {open && (
-        <div className="bx-chat-panel" role="dialog" aria-label="Offerquay assistant">
+        <div className="bx-chat-panel" role="dialog" aria-label="Offerquay AI guide">
           <header className="bx-chat-head">
             <div>
-              <strong>Offerquay guide</strong>
-              <span>Usually replies instantly</span>
+              <strong>Offerquay AI guide</strong>
+              <span>{busy ? "Thinking…" : "Ask anything about the product"}</span>
             </div>
             <button type="button" className="bx-chat-x" onClick={() => setOpen(false)} aria-label="Close chat">
               ×
@@ -78,12 +86,22 @@ export function SiteChatbot() {
                 {m.text}
               </div>
             ))}
+            {busy && (
+              <div className="bx-chat-bubble bx-chat-bubble--bot bx-chat-typing" aria-live="polite">
+                <span />
+                <span />
+                <span />
+              </div>
+            )}
             <div className="bx-chat-quick">
-              <button type="button" onClick={() => send("Tell me about Resume Studio")}>
-                Resume Studio
+              <button type="button" disabled={busy} onClick={() => void send("How do I score my CV?")}>
+                Score my CV
               </button>
-              <button type="button" onClick={() => send("When is Interview Prep?")}>
-                Interview Prep
+              <button type="button" disabled={busy} onClick={() => void send("How do I build a resume from scratch?")}>
+                Build resume
+              </button>
+              <button type="button" disabled={busy} onClick={() => void send("What is coming next on Offerquay?")}>
+                What’s next
               </button>
               <a className="bx-chat-go" href={appHref("/")}>
                 Open app →
@@ -95,16 +113,19 @@ export function SiteChatbot() {
             className="bx-chat-form"
             onSubmit={(e) => {
               e.preventDefault();
-              send();
+              void send();
             }}
           >
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about Offerquay…"
+              placeholder="Ask how to get started…"
               aria-label="Message"
+              disabled={busy}
             />
-            <button type="submit">Send</button>
+            <button type="submit" disabled={busy || !input.trim()}>
+              Send
+            </button>
           </form>
         </div>
       )}
