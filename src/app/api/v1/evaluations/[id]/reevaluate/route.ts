@@ -14,9 +14,9 @@ export async function POST(req: Request, ctx: Ctx) {
         { status: 500 },
       );
     }
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GROQ_API_KEY) {
       return NextResponse.json(
-        { detail: "Server misconfigured: GEMINI_API_KEY is missing." },
+        { detail: "Server misconfigured: GROQ_API_KEY is missing." },
         { status: 500 },
       );
     }

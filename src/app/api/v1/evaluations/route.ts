@@ -20,9 +20,9 @@ export async function POST(req: Request) {
         { status: 500 },
       );
     }
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GROQ_API_KEY) {
       return NextResponse.json(
-        { detail: "Server misconfigured: GEMINI_API_KEY is missing." },
+        { detail: "Server misconfigured: GROQ_API_KEY is missing." },
         { status: 500 },
       );
     }
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       buffer,
     });
 
-    // Return immediately so the browser/Vercel gateway does not 504 while Gemini runs.
+    // Return immediately so the browser/Vercel gateway does not 504 while Groq runs.
     after(async () => {
       try {
         await processEvaluationJob(started);

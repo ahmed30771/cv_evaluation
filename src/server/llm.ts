@@ -118,29 +118,24 @@ Rules:
 - Preserve true facts from the source; upgrade presentation to clear the evaluation issues.`;
 
 const RATE_LIMIT_USER_MESSAGE =
-  "AI is busy right now (free model limit). Wait about a minute and try again.";
+  "AI is busy right now (rate limit). Wait about a minute and try again.";
 
-const GEMINI_FALLBACKS = [
-  "gemini-3.1-flash-lite",
-  "gemini-3.5-flash",
-  "gemini-3.5-flash-lite",
-  "gemini-flash-latest",
-  "gemini-3.8-flash",
-];
-const GROQ_FALLBACKS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "gemma2-9b-it"];
+const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+const GROQ_MAX_TOKENS = 65_536;
+const GROQ_FALLBACKS: string[] = [];
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isRateLimitError(err: unknown): boolean {
-  return /\b429\b|\b503\b|rate-limited|rate limit|too many requests|resource_exhausted|quota|high demand/i.test(
+  return /\b429\b|\b503\b|rate-limited|rate limit|too many requests|resource_exhausted|quota|high demand|over capacity/i.test(
     String(err),
   );
 }
 
 function isUnavailableModelError(err: unknown): boolean {
-  return /\b404\b|no longer available|not found|is not found/i.test(String(err));
+  return /\b404\b|no longer available|not found|is not found|model_not_found/i.test(String(err));
 }
 
 function parseJsonContent(content: string): unknown {
@@ -241,22 +236,15 @@ function modelList(primary: string, fallbacks: string[]): string[] {
   return [...new Set([primary, ...fallbacks].filter(Boolean))];
 }
 
-function geminiConfig() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
-  const model = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
-  return { apiKey, model };
-}
-
 function groqConfig() {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error("GROQ_API_KEY is not set");
-  const model = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
+  const model = process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL;
   return { apiKey, model };
 }
 
-/** Gemini generateContent — used for large/complex tasks. */
-async function geminiComplete(opts: {
+/** Groq OpenAI-compatible chat completions. */
+async function groqComplete(opts: {
   model: string;
   apiKey: string;
   system: string;
@@ -266,81 +254,38 @@ async function geminiComplete(opts: {
   json?: boolean;
   timeoutMs?: number;
 }): Promise<string> {
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.model)}` +
-    `:generateContent?key=${encodeURIComponent(opts.apiKey)}`;
-
-  const body: Record<string, unknown> = {
-    systemInstruction: { parts: [{ text: opts.system }] },
-    contents: [{ role: "user", parts: [{ text: opts.user }] }],
-    generationConfig: {
-      temperature: opts.temperature ?? 0.2,
-      maxOutputTokens: opts.maxTokens ?? 4096,
-      ...(opts.json ? { responseMimeType: "application/json" } : {}),
-    },
-  };
-
-  const timeoutMs = opts.timeoutMs ?? 35_000;
+  const timeoutMs = opts.timeoutMs ?? 55_000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   let resp: Response;
   try {
-    resp = await fetch(url, {
+    resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: {
+        Authorization: `Bearer ${opts.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: opts.model,
+        temperature: opts.temperature ?? 0.2,
+        max_tokens: opts.maxTokens ?? GROQ_MAX_TOKENS,
+        ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+        messages: [
+          { role: "system", content: opts.system },
+          { role: "user", content: opts.user },
+        ],
+      }),
       signal: controller.signal,
     });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new Error(`Gemini timeout after ${timeoutMs}ms`);
+      throw new Error(`Groq timeout after ${timeoutMs}ms`);
     }
     throw err;
   } finally {
     clearTimeout(timer);
   }
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Gemini ${resp.status}: ${text.slice(0, 280)}`);
-  }
-
-  const result = (await resp.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-    error?: { message?: string };
-  };
-  if (result.error?.message) throw new Error(`Gemini: ${result.error.message}`);
-  const parts = result.candidates?.[0]?.content?.parts || [];
-  const content = parts.map((p) => p.text || "").join("").trim();
-  if (!content) throw new Error("Gemini returned empty content");
-  return content;
-}
-
-/** Groq OpenAI-compatible chat — used for small/fast tasks. */
-async function groqComplete(opts: {
-  model: string;
-  apiKey: string;
-  system: string;
-  user: string;
-  maxTokens?: number;
-  temperature?: number;
-}): Promise<string> {
-  const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${opts.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: opts.model,
-      temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? 1200,
-      messages: [
-        { role: "system", content: opts.system },
-        { role: "user", content: opts.user },
-      ],
-    }),
-  });
 
   if (!resp.ok) {
     const text = await resp.text();
@@ -358,9 +303,9 @@ async function groqComplete(opts: {
 async function withRetries<T>(models: string[], run: (model: string) => Promise<T>): Promise<T> {
   let lastError: unknown;
   const started = Date.now();
-  const budgetMs = 50_000;
+  const budgetMs = 55_000;
 
-  for (let mi = 0; mi < Math.min(models.length, 3); mi++) {
+  for (let mi = 0; mi < models.length; mi++) {
     const model = models[mi]!;
     const maxAttempts = mi === 0 ? 2 : 1;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -386,26 +331,26 @@ async function withRetries<T>(models: string[], run: (model: string) => Promise<
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-/** Full CV evaluation — Gemini (complex). */
+/** Full CV evaluation — Groq. */
 export async function evaluateCv(rawText: string): Promise<{ scores: Scores; findings: Finding[] }> {
-  const { apiKey, model } = geminiConfig();
-  const clipped = rawText.slice(0, 24000);
+  const { apiKey, model } = groqConfig();
+  const clipped = rawText.slice(0, 50_000);
   const userContent =
     "Evaluate the CV between the markers. Return a DETAILED JSON analysis only (summary + section_analysis + many findings).\n" +
     "Score consistently using the rubric; do not invent random score swings.\n\n" +
     `<<<CV_START>>>\n${clipped}\n<<<CV_END>>>`;
 
   try {
-    return await withRetries(modelList(model, GEMINI_FALLBACKS), async (m) => {
-      const content = await geminiComplete({
+    return await withRetries(modelList(model, GROQ_FALLBACKS), async (m) => {
+      const content = await groqComplete({
         apiKey,
         model: m,
         system: SYSTEM_PROMPT,
         user: userContent,
         temperature: 0,
-        maxTokens: 4096,
+        maxTokens: GROQ_MAX_TOKENS,
         json: true,
-        timeoutMs: 40_000,
+        timeoutMs: 55_000,
       });
       return normalizeResult(parseJsonContent(content) as Record<string, unknown>);
     });
@@ -417,14 +362,14 @@ export async function evaluateCv(rawText: string): Promise<{ scores: Scores; fin
   }
 }
 
-/** Full structured rewrite — Gemini (complex). */
+/** Full structured rewrite — Groq. */
 export async function rewriteCv(opts: {
   rawText: string;
   sections: Record<string, unknown>;
   findings: { type: string; title: string; detail: string; section?: string | null }[];
   currentCv?: unknown;
 }): Promise<StructuredCv> {
-  const { apiKey, model } = geminiConfig();
+  const { apiKey, model } = groqConfig();
 
   const actionable = opts.findings
     .filter((f) => ["issue", "missing", "recommendation", "improvement"].includes(f.type))
@@ -439,7 +384,7 @@ export async function rewriteCv(opts: {
 
   const currentBlock =
     opts.currentCv != null
-      ? `<<<CURRENT_CV>>>\n${JSON.stringify(opts.currentCv).slice(0, 40000)}\n<<<CURRENT_CV_END>>>\n\n`
+      ? `<<<CURRENT_CV>>>\n${JSON.stringify(opts.currentCv).slice(0, 40_000)}\n<<<CURRENT_CV_END>>>\n\n`
       : "";
 
   const userContent =
@@ -447,20 +392,21 @@ export async function rewriteCv(opts: {
     `You MUST resolve all ${actionable.length || 0} evaluation findings listed below (wording, structure, clarity, ATS, missing supported content).\n` +
     "Do not invent facts. Prefer the CURRENT_CV JSON as the latest draft when present; otherwise use the extracted CV text/sections.\n\n" +
     currentBlock +
-    `<<<SECTIONS_JSON>>>\n${JSON.stringify(opts.sections).slice(0, 20000)}\n<<<SECTIONS_END>>>\n\n` +
-    `<<<FINDINGS>>>\n${findingLines.slice(0, 16000) || "(none)"}\n<<<FINDINGS_END>>>\n\n` +
-    `<<<CV_START>>>\n${opts.rawText.slice(0, 50000)}\n<<<CV_END>>>`;
+    `<<<SECTIONS_JSON>>>\n${JSON.stringify(opts.sections).slice(0, 20_000)}\n<<<SECTIONS_END>>>\n\n` +
+    `<<<FINDINGS>>>\n${findingLines.slice(0, 16_000) || "(none)"}\n<<<FINDINGS_END>>>\n\n` +
+    `<<<CV_START>>>\n${opts.rawText.slice(0, 50_000)}\n<<<CV_END>>>`;
 
   try {
-    return await withRetries(modelList(model, GEMINI_FALLBACKS), async (m) => {
-      const content = await geminiComplete({
+    return await withRetries(modelList(model, GROQ_FALLBACKS), async (m) => {
+      const content = await groqComplete({
         apiKey,
         model: m,
         system: REWRITE_SYSTEM_PROMPT,
         user: userContent,
-        maxTokens: 8192,
+        maxTokens: GROQ_MAX_TOKENS,
         temperature: 0.2,
         json: true,
+        timeoutMs: 55_000,
       });
       return normalizeStructuredCv(parseJsonContent(content));
     });
@@ -472,7 +418,7 @@ export async function rewriteCv(opts: {
   }
 }
 
-/** Short text improvement — Groq (fast/small). */
+/** Short text improvement — Groq. */
 export async function improveCvText(opts: {
   text: string;
   section?: string | null;
@@ -503,7 +449,8 @@ export async function improveCvText(opts: {
         model: m,
         system,
         user,
-        maxTokens: 1200,
+        maxTokens: Math.min(4096, GROQ_MAX_TOKENS),
+        timeoutMs: 30_000,
       });
       const cleaned = content
         .trim()

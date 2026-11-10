@@ -9,14 +9,14 @@ import { finalizeScores, hashScoreContent } from "./scoring";
 function safeError(err: unknown): string {
   const msg = String(err ?? "");
   console.error("[evaluate]", msg.slice(0, 500));
-  if (/DATABASE_URL|GEMINI_API_KEY|GROQ_API_KEY|misconfigured/i.test(msg)) return msg.slice(0, 300);
-  if (/\b429\b|\b503\b|rate-limited|rate limit|busy right now|quota|resource_exhausted|high demand|timeout/i.test(msg)) {
-    return "AI is busy right now (free model limit). Wait about a minute and try again.";
+  if (/DATABASE_URL|GROQ_API_KEY|misconfigured/i.test(msg)) return msg.slice(0, 300);
+  if (/\b429\b|\b503\b|rate-limited|rate limit|busy right now|quota|resource_exhausted|high demand|timeout|over capacity/i.test(msg)) {
+    return "AI is busy right now (rate limit). Wait about a minute and try again.";
   }
-  if (/\bno longer available\b|\b404\b|not found/i.test(msg)) {
-    return "Configured Gemini model is unavailable. Update GEMINI_MODEL (e.g. gemini-3.1-flash-lite) and try again.";
+  if (/\bno longer available\b|\b404\b|model_not_found|not found/i.test(msg)) {
+    return "Configured Groq model is unavailable. Update GROQ_MODEL (e.g. openai/gpt-oss-120b) and try again.";
   }
-  if (/Gemini|Groq|401|402|403/i.test(msg)) {
+  if (/Groq|401|402|403/i.test(msg)) {
     return "AI evaluation service is temporarily unavailable. Please try again.";
   }
   if (/extract|text|pdf|docx|mammoth|unpdf/i.test(msg)) return msg.slice(0, 300);
@@ -71,7 +71,7 @@ export async function startEvaluationFromUpload(opts: {
   };
 }
 
-/** Extract + Gemini evaluate + persist scores (runs after HTTP response). */
+/** Extract + Groq evaluate + persist scores (runs after HTTP response). */
 export async function processEvaluationJob(job: StartedEvaluation): Promise<void> {
   const sql = getSql();
   const { id, buffer, fileType, startedAt } = job;

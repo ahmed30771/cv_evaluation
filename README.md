@@ -2,7 +2,7 @@
 
 Job-ready platform: **marketing site** on the main domain + **Resume Studio** on the `app` subdomain — one repo, one Vercel project.
 
-**Stack:** Next.js (App Router) · Neon PostgreSQL · Gemini + Groq  
+**Stack:** Next.js (App Router) · Neon PostgreSQL · Groq (`openai/gpt-oss-120b`)  
 **Deploy:** Single Vercel project with two hostnames
 
 ## Local setup
@@ -41,10 +41,8 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000/studio
 | Variable | Required | Notes |
 |----------|----------|--------|
 | `DATABASE_URL` | Yes | Neon connection string |
-| `GEMINI_API_KEY` | Yes | Google AI Studio / Gemini key (eval + rewrite) |
-| `GEMINI_MODEL` | No | Default `gemini-3.1-flash-lite` |
-| `GROQ_API_KEY` | Yes | Groq key (short text improve) |
-| `GROQ_MODEL` | No | Default `llama-3.1-8b-instant` |
+| `GROQ_API_KEY` | Yes | Groq API key (eval, rewrite, improve) |
+| `GROQ_MODEL` | No | Default `openai/gpt-oss-120b` |
 | `MAX_UPLOAD_BYTES` | No | Default `5242880` (5 MB) |
 | `NEXT_PUBLIC_MAIN_URL` | Yes | Marketing origin |
 | `NEXT_PUBLIC_APP_URL` | Yes | Studio origin (`https://app…` or `…/studio`) |

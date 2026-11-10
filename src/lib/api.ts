@@ -94,7 +94,7 @@ export async function waitForEvaluation(
   id: string,
   opts?: { onStatus?: (status: string) => void; timeoutMs?: number },
 ): Promise<EvaluationStatus> {
-  const timeoutMs = opts?.timeoutMs ?? 180_000;
+  const timeoutMs = opts?.timeoutMs ?? 240_000;
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const s = await getEvaluation(id);

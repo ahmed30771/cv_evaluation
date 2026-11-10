@@ -2,7 +2,7 @@
 
 **Product:** CV Evaluation Platform  
 **Version:** 1.1 (MVP)  
-**Stack:** Next.js (UI + API Route Handlers) · PostgreSQL (Neon) · Gemini + Groq
+**Stack:** Next.js (UI + API Route Handlers) · PostgreSQL (Neon) · Groq (`openai/gpt-oss-120b`)
 
 ---
 
@@ -13,9 +13,9 @@ flowchart LR
   User --> NextJS
   NextJS -->|Route Handlers multipart| ApiRoutes
   ApiRoutes --> Extract
-  Extract --> OpenRouter
+  Extract --> Groq
   ApiRoutes --> Neon
-  OpenRouter --> ApiRoutes
+  Groq --> ApiRoutes
   ApiRoutes -->|JSON report| NextJS
 ```
 
@@ -24,7 +24,7 @@ flowchart LR
 | UI | Next.js App Router, TypeScript, Tailwind CSS | Landing, upload, processing poll, detailed report |
 | API | Next.js Route Handlers under `src/app/api/` | Upload, validation, extraction, LLM orchestration, persistence, report |
 | Database | PostgreSQL on Neon (`@neondatabase/serverless`) | Evaluations, extractions, scores, findings |
-| AI | Gemini (eval/rewrite) + Groq (short improve) | Structured CV evaluation JSON + free-model retries |
+| AI | Groq (`openai/gpt-oss-120b`, max_tokens 65536) | Structured CV evaluation JSON + rewrite + improve |
 | Parsers | `unpdf` (PDF), `mammoth` (DOCX) | Text extraction on Vercel serverless |
 | Optional | `backend/` FastAPI | Local/Python experiments only — **not** the Vercel production path |
 
@@ -33,7 +33,7 @@ flowchart LR
 ```text
 /
   src/app/                 # Next.js pages + API routes
-  src/server/              # extract, llm (gemini/groq), scoring, integrity, pipeline, db
+  src/server/              # extract, llm (groq), scoring, integrity, pipeline, db
   src/components/
   backend/                 # Optional FastAPI (local only)
   package.json
@@ -43,7 +43,7 @@ flowchart LR
 
 **Deployment (MVP):** One Vercel project, Root Directory = repo root.  
 API is same-origin (`/api/v1/...`, `/api/health`). Do **not** set `NEXT_PUBLIC_API_BASE_URL` on Vercel.  
-Env vars on Vercel: `DATABASE_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GROQ_API_KEY`, `GROQ_MODEL`, `MAX_UPLOAD_BYTES`.
+Env vars on Vercel: `DATABASE_URL`, `GROQ_API_KEY`, `GROQ_MODEL`, `MAX_UPLOAD_BYTES`.
 
 ---
 
