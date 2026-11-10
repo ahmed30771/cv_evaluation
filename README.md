@@ -42,7 +42,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000/studio
 |----------|----------|--------|
 | `DATABASE_URL` | Yes | Neon connection string |
 | `GEMINI_API_KEY` | Yes | Google AI Studio / Gemini key (eval + rewrite) |
-| `GEMINI_MODEL` | No | Default `gemini-2.0-flash` |
+| `GEMINI_MODEL` | No | Default `gemini-3.1-flash-lite` |
 | `GROQ_API_KEY` | Yes | Groq key (short text improve) |
 | `GROQ_MODEL` | No | Default `llama-3.1-8b-instant` |
 | `MAX_UPLOAD_BYTES` | No | Default `5242880` (5 MB) |

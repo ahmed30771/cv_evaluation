@@ -120,7 +120,13 @@ Rules:
 const RATE_LIMIT_USER_MESSAGE =
   "AI is busy right now (free model limit). Wait about a minute and try again.";
 
-const GEMINI_FALLBACKS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-flash-latest"];
+const GEMINI_FALLBACKS = [
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-flash-latest",
+  "gemini-3.8-flash",
+];
 const GROQ_FALLBACKS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "gemma2-9b-it"];
 
 function sleep(ms: number) {
@@ -128,7 +134,13 @@ function sleep(ms: number) {
 }
 
 function isRateLimitError(err: unknown): boolean {
-  return /\b429\b|rate-limited|rate limit|too many requests|resource_exhausted|quota/i.test(String(err));
+  return /\b429\b|\b503\b|rate-limited|rate limit|too many requests|resource_exhausted|quota|high demand/i.test(
+    String(err),
+  );
+}
+
+function isUnavailableModelError(err: unknown): boolean {
+  return /\b404\b|no longer available|not found|is not found/i.test(String(err));
 }
 
 function parseJsonContent(content: string): unknown {
@@ -232,7 +244,7 @@ function modelList(primary: string, fallbacks: string[]): string[] {
 function geminiConfig() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
-  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
   return { apiKey, model };
 }
 
@@ -341,6 +353,8 @@ async function withRetries<T>(models: string[], run: (model: string) => Promise<
         return await run(model);
       } catch (err) {
         lastError = err;
+        console.error(`[llm] model=${model} attempt=${attempt + 1} failed:`, String(err).slice(0, 400));
+        if (isUnavailableModelError(err)) break;
         if (isRateLimitError(err)) {
           const remaining = budgetMs - (Date.now() - started);
           if (remaining < 1500) break;
