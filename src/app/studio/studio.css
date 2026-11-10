@@ -162,32 +162,82 @@
   position: relative;
   z-index: 1;
   display: grid;
-  gap: 0.2rem;
-  padding: 1rem 1.25rem 1.5rem;
+  gap: 0.55rem;
+  justify-items: center;
+  padding: 1.15rem 1.25rem 1.6rem;
   border-top: 1px solid var(--sq-line);
   color: var(--sq-muted);
   font-size: 0.82rem;
   line-height: 1.45;
   text-align: center;
+  background: linear-gradient(180deg, transparent 0%, rgba(15, 118, 110, 0.04) 100%);
 }
 
-.studio-footer p {
+.studio-footer-label {
   margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sq-muted);
 }
 
-.studio-footer strong {
+.studio-footer-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+}
+
+.studio-footer-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.34rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--sq-line);
+  background: #fff;
   color: var(--sq-ink);
-  font-weight: 650;
-}
-
-.studio-footer a {
-  color: var(--sq-teal);
   text-decoration: none;
+  font-size: 0.78rem;
   font-weight: 600;
+  line-height: 1.2;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
-.studio-footer a:hover {
-  text-decoration: underline;
+a.studio-footer-tag:hover {
+  border-color: rgba(15, 118, 110, 0.35);
+  background: rgba(20, 184, 166, 0.08);
+  color: var(--sq-teal);
+}
+
+.studio-footer-tag--person {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.06rem;
+  border-radius: 12px;
+  padding: 0.4rem 0.75rem;
+}
+
+.studio-footer-tag--person em {
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sq-teal);
+}
+
+.studio-footer-tag--brand {
+  background: var(--sq-ink);
+  border-color: var(--sq-ink);
+  color: #fff;
+}
+
+a.studio-footer-tag--brand:hover {
+  background: var(--sq-teal);
+  border-color: var(--sq-teal);
+  color: #fff;
 }
 
 .studio-shell:has(.editor-page) > .studio-footer {

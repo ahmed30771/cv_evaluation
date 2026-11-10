@@ -36,18 +36,27 @@ export default async function StudioLayout({ children }: { children: React.React
       </header>
       <div className="studio-body">{children}</div>
       <footer className="studio-footer">
-        <p>
-          Created by <strong>Muhammad Junaid</strong>
-          <span aria-hidden> · </span>
-          <a href="mailto:muhamadjunaid27@gmail.com">muhamadjunaid27@gmail.com</a>
-          <span aria-hidden> · </span>
-          <a href="tel:+923092547332">+92 309 2547332</a>
-        </p>
-        <p>
-          <a href="https://bluexech.com/" target="_blank" rel="noopener noreferrer">
-            BluexechAI
+        <p className="studio-footer-label">Built with care by</p>
+        <div className="studio-footer-tags">
+          <span className="studio-footer-tag studio-footer-tag--person">
+            Muhammad Junaid
+            <em>CEO, Bluexech AI</em>
+          </span>
+          <a className="studio-footer-tag" href="mailto:Junaid@bluexech.com">
+            Junaid@bluexech.com
           </a>
-        </p>
+          <a className="studio-footer-tag" href="tel:+923092547332">
+            +92 309 2547332
+          </a>
+          <a
+            className="studio-footer-tag studio-footer-tag--brand"
+            href="https://bluexech.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Bluexech AI
+          </a>
+        </div>
       </footer>
     </div>
   );

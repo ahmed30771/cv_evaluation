@@ -109,19 +109,27 @@ export default function WwwHomePage() {
           <span>Job-ready tools for ambitious careers.</span>
         </div>
         <div className="bx-footer-credit">
-          <p>
-            Created by <strong>Muhammad Junaid</strong>
-          </p>
-          <p>
-            <a href="mailto:muhamadjunaid27@gmail.com">muhamadjunaid27@gmail.com</a>
-            <span aria-hidden> · </span>
-            <a href="tel:+923092547332">+92 309 2547332</a>
-          </p>
-          <p>
-            <a href="https://bluexech.com/" target="_blank" rel="noopener noreferrer">
-              BluexechAI
+          <p className="bx-footer-credit-label">Built with care by</p>
+          <div className="bx-footer-tags">
+            <span className="bx-footer-tag bx-footer-tag--person">
+              Muhammad Junaid
+              <em>CEO, Bluexech AI</em>
+            </span>
+            <a className="bx-footer-tag" href="mailto:Junaid@bluexech.com">
+              Junaid@bluexech.com
             </a>
-          </p>
+            <a className="bx-footer-tag" href="tel:+923092547332">
+              +92 309 2547332
+            </a>
+            <a
+              className="bx-footer-tag bx-footer-tag--brand"
+              href="https://bluexech.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Bluexech AI
+            </a>
+          </div>
         </div>
       </footer>
       <SiteChatbot />
